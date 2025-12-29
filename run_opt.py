@@ -2659,6 +2659,7 @@ def main():
             elapsed_seconds = time.perf_counter() - run_start
             n_steps_value = n_steps["value"] if n_steps_source else None
             imaginary_count = None
+            frequency_payload = None
             if frequency_enabled:
                 logging.info("Calculating harmonic frequencies for optimized geometry...")
                 try:
@@ -2741,6 +2742,8 @@ def main():
                     json.dump(frequency_payload, handle, indent=2)
                 optimization_metadata["frequency"] = frequency_payload
             run_single_point = False
+            sp_status = "skipped"
+            sp_skip_reason = None
             if single_point_enabled:
                 if frequency_enabled:
                     expected_imaginary = 1 if optimizer_mode == "transition_state" else 0
@@ -2749,6 +2752,7 @@ def main():
                             "Skipping single-point calculation because imaginary frequency "
                             "count is unavailable."
                         )
+                        sp_skip_reason = "Imaginary frequency count unavailable."
                     elif imaginary_count == expected_imaginary:
                         run_single_point = True
                     else:
@@ -2758,16 +2762,37 @@ def main():
                             imaginary_count,
                             expected_imaginary,
                         )
+                        sp_skip_reason = (
+                            "Imaginary frequency count does not match expected "
+                            f"{expected_imaginary}."
+                        )
                 else:
                     if args.interactive:
                         run_single_point = _prompt_yes_no(
                             "단일점(single point) 계산을 실행할까요?",
                             default=True,
                         )
+                        if not run_single_point:
+                            sp_skip_reason = "User skipped single-point calculation."
                     else:
                         run_single_point = True
             else:
                 logging.info("Skipping single-point energy calculation (disabled).")
+                sp_skip_reason = "Single-point calculation disabled."
+
+            if run_single_point:
+                sp_status = "executed"
+                sp_skip_reason = None
+
+            optimization_metadata["single_point"]["status"] = sp_status
+            optimization_metadata["single_point"]["skip_reason"] = sp_skip_reason
+            if frequency_payload is not None:
+                frequency_payload["single_point"] = {
+                    "status": sp_status,
+                    "skip_reason": sp_skip_reason,
+                }
+                with open(frequency_output_path, "w", encoding="utf-8") as handle:
+                    json.dump(frequency_payload, handle, indent=2)
 
             try:
                 if run_single_point:
