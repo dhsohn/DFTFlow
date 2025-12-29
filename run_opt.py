@@ -306,9 +306,9 @@ def _prompt_interactive_config(args):
     if calculation_mode == "optimization":
         optimization_choice = _prompt_choice(
             "최적화 유형을 선택하세요:",
-            ["optimization of intermediates", "optimization of transition states"],
+            ["중간체 최적화", "전이상태 최적화"],
         )
-        if optimization_choice == "optimization of transition states":
+        if optimization_choice == "전이상태 최적화":
             base_config_path = INTERACTIVE_CONFIG_TS
         else:
             base_config_path = INTERACTIVE_CONFIG_MINIMUM
