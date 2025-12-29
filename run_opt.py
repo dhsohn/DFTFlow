@@ -1,4 +1,5 @@
 import argparse
+import importlib.util
 import glob
 import json
 import logging
@@ -1424,7 +1425,48 @@ def _normalize_cli_args(argv):
 def _run_doctor():
     print("pDFT doctor report")
     print("-" * 60)
+
+    def _print_check(label, ok, hint):
+        status = "OK" if ok else "FAIL"
+        print(f"{label:<30} {status} - {hint}")
+
+    def _check_import(module_name, hint):
+        spec = importlib.util.find_spec(module_name)
+        ok = spec is not None
+        _print_check(module_name, ok, "available" if ok else hint)
+        return ok
+
+    def _solvent_map_hint(error):
+        if isinstance(error, FileNotFoundError):
+            return (
+                "Missing solvent map file. Provide --solvent-map or restore "
+                f"{DEFAULT_SOLVENT_MAP_PATH}."
+            )
+        if isinstance(error, json.JSONDecodeError):
+            return "Invalid JSON in solvent map. Fix the JSON syntax."
+        return "Unable to read solvent map. Check file permissions and path."
+
+    try:
+        load_solvent_map(DEFAULT_SOLVENT_MAP_PATH)
+    except Exception as exc:
+        _print_check("solvent_map", False, _solvent_map_hint(exc))
+        print(f"  Error: {exc}")
+        sys.exit(1)
+
+    checks = [
+        ("pyscf", "Install with: pip install pyscf"),
+        ("pyscf.dft", "Install with: pip install pyscf"),
+        ("pyscf.gto", "Install with: pip install pyscf"),
+        ("pyscf.hessian.thermo", "Install with: pip install pyscf"),
+        ("dftd3", "Install with: pip install dftd3"),
+        ("dftd4", "Install with: pip install dftd4"),
+    ]
+    print("Diagnostics:")
+    for module_name, hint in checks:
+        _check_import(module_name, hint)
+
     environment = collect_environment_snapshot(DEFAULT_THREAD_COUNT)
+    print("\nEnvironment:")
     print(f"Python       : {environment.get('python_version')}")
     print(f"Platform     : {environment.get('platform')}")
     print(f"CPU count    : {environment.get('cpu_count')}")
@@ -1440,8 +1482,8 @@ def _run_doctor():
         )
     else:
         print("Git          : not a git repository")
-    print("Packages:")
-    for package in ("pyscf", "ase", "dftd3", "dftd4", "sella"):
+    print("\nPackage versions:")
+    for package in ("ase", "pyscf", "dftd3", "dftd4"):
         version = get_package_version(package)
         status = version if version is not None else "not installed"
         print(f"  {package}: {status}")
