@@ -1,5 +1,8 @@
 import json
 import os
+import re
+
+from jsonschema import Draft7Validator
 
 DEFAULT_CHARGE = 0
 DEFAULT_SPIN = None
@@ -16,6 +19,36 @@ DEFAULT_QUEUE_PATH = "runs/queue.json"
 DEFAULT_QUEUE_LOCK_PATH = "runs/queue.lock"
 DEFAULT_QUEUE_RUNNER_LOCK_PATH = "runs/queue.runner.lock"
 DEFAULT_QUEUE_RUNNER_LOG_PATH = "log/queue_runner.log"
+
+RUN_CONFIG_SCHEMA = {
+    "type": "object",
+    "required": ["threads", "memory_gb", "basis", "xc", "solvent"],
+    "properties": {
+        "threads": {"type": "integer", "minimum": 1},
+        "memory_gb": {"type": ["number", "integer"], "exclusiveMinimum": 0},
+        "basis": {"type": "string", "minLength": 1},
+        "xc": {"type": "string", "minLength": 1},
+        "solvent": {"type": "string", "minLength": 1},
+        "solvent_model": {"type": ["string", "null"], "enum": ["pcm", "smd", None]},
+        "dispersion": {"type": ["string", "null"], "enum": ["d3bj", "d3zero", "d4", None]},
+        "calculation_mode": {
+            "type": "string",
+            "enum": ["optimization", "single_point", "frequency"],
+        },
+    },
+    "additionalProperties": True,
+}
+
+RUN_CONFIG_EXAMPLES = {
+    "threads": "\"threads\": 4",
+    "memory_gb": "\"memory_gb\": 8",
+    "basis": "\"basis\": \"def2-svp\"",
+    "xc": "\"xc\": \"b3lyp\"",
+    "solvent": "\"solvent\": \"water\"",
+    "solvent_model": "\"solvent_model\": \"pcm\"",
+    "dispersion": "\"dispersion\": \"d3bj\"",
+    "calculation_mode": "\"calculation_mode\": \"optimization\"",
+}
 
 
 def load_run_config(config_path):
@@ -48,9 +81,53 @@ def _validate_fields(config, rules, prefix=""):
                 raise ValueError(message.format(name=name))
 
 
+def _schema_example_for_path(path):
+    if not path:
+        return "See run_config_ase.json for a complete example."
+    if path in RUN_CONFIG_EXAMPLES:
+        return RUN_CONFIG_EXAMPLES[path]
+    leaf = path.split(".")[-1]
+    return RUN_CONFIG_EXAMPLES.get(leaf, "See run_config_ase.json for a complete example.")
+
+
+def _format_schema_error(error):
+    path = ".".join(str(part) for part in error.absolute_path)
+    if error.validator == "required":
+        missing = None
+        if isinstance(error.params, dict):
+            missing = error.params.get("required")
+        if isinstance(missing, (list, tuple)):
+            missing = missing[0] if missing else None
+        if not missing:
+            match = re.search(r"'(.+?)' is a required property", error.message)
+            if match:
+                missing = match.group(1)
+        key_path = f"{path}.{missing}" if path and missing else (missing or path or "(root)")
+        cause = "Missing required key."
+        example = _schema_example_for_path(missing or path)
+    elif error.validator == "enum":
+        key_path = path or "(root)"
+        allowed_values = ", ".join(repr(value) for value in error.validator_value)
+        cause = f"Invalid value. Allowed values: {allowed_values}."
+        example = _schema_example_for_path(path)
+    else:
+        key_path = path or "(root)"
+        cause = error.message
+        example = _schema_example_for_path(path)
+    return f"Config schema error at '{key_path}': {cause} Example: {example}"
+
+
+def _validate_schema(config):
+    validator = Draft7Validator(RUN_CONFIG_SCHEMA)
+    errors = sorted(validator.iter_errors(config), key=lambda error: list(error.absolute_path))
+    if errors:
+        raise ValueError(_format_schema_error(errors[0]))
+
+
 def validate_run_config(config):
     if not isinstance(config, dict):
         raise ValueError("Config must be a JSON object.")
+    _validate_schema(config)
     is_int = lambda value: isinstance(value, int) and not isinstance(value, bool)
     is_number = lambda value: isinstance(value, (int, float)) and not isinstance(value, bool)
     is_bool = lambda value: isinstance(value, bool)

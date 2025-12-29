@@ -1578,7 +1578,13 @@ def main():
             args.config = str(config_path)
             config_source_path = config_path
 
-        validate_run_config(config)
+        try:
+            validate_run_config(config)
+        except ValueError as error:
+            message = str(error)
+            print(message, file=sys.stderr)
+            logging.error(message)
+            raise
         if args.validate_only:
             print(f"Config validation passed: {args.config}")
             return
