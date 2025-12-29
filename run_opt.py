@@ -13,6 +13,7 @@ import traceback
 import uuid
 from datetime import datetime
 from contextlib import contextmanager
+from pathlib import Path
 
 from run_opt_chemistry import (
     apply_scf_settings,
@@ -65,8 +66,9 @@ from run_opt_resources import (
 from run_opt_dispersion import load_d3_calculator, parse_dispersion_settings
 
 
-INTERACTIVE_CONFIG_MINIMUM = "run_config_ase.json"
-INTERACTIVE_CONFIG_TS = "run_config_ts.json"
+_SCRIPT_DIR = Path(__file__).resolve().parent
+INTERACTIVE_CONFIG_MINIMUM = _SCRIPT_DIR / "run_config_ase.json"
+INTERACTIVE_CONFIG_TS = _SCRIPT_DIR / "run_config_ts.json"
 BASIS_SET_OPTIONS = [
     "6-31g",
     "6-31g*",
@@ -409,7 +411,7 @@ def _prompt_interactive_config(args):
         config["single_point"] = single_point_config
     config_raw = json.dumps(config, indent=2, ensure_ascii=False)
     args.config = "<interactive>"
-    return config, config_raw
+    return config, config_raw, base_config_path
 
 
 def _run_ase_optimizer(
@@ -1553,14 +1555,20 @@ def main():
             _print_status(args.status, DEFAULT_RUN_METADATA_PATH)
             return
 
+        config_source_path = None
         if args.interactive:
-            config, config_raw = _prompt_interactive_config(args)
+            config, config_raw, config_source_path = _prompt_interactive_config(args)
+            if config_source_path is not None:
+                config_source_path = config_source_path.resolve()
         else:
             if not args.xyz_file and not args.validate_only:
                 raise ValueError(
                     "xyz_file is required unless --status or --validate-only is used."
                 )
-            config, config_raw = load_run_config(args.config)
+            config_path = Path(args.config).expanduser().resolve()
+            config, config_raw = load_run_config(config_path)
+            args.config = str(config_path)
+            config_source_path = config_path
 
         validate_run_config(config)
         if args.validate_only:
@@ -1692,6 +1700,8 @@ def main():
             print(f"  Queue runner : {DEFAULT_QUEUE_RUNNER_LOG_PATH}")
             return
         setup_logging(log_path, verbose, run_id=run_id, event_log_path=event_log_path)
+        if config_source_path is not None:
+            logging.info("Loaded config file: %s", config_source_path)
         queue_tracking = False
         if not run_in_background and not args.no_background:
             started_at = datetime.now().isoformat()
