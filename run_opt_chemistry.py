@@ -64,10 +64,11 @@ def parse_xyz_metadata(xyz_lines):
     metadata_pattern = re.compile(
         r"(charge|spin|multiplicity)\s*[:=]\s*([^\s,;]+)", re.I
     )
+    integer_pattern = re.compile(r"[+-]?\d+$")
     for match in metadata_pattern.finditer(comment):
         key = match.group(1).lower()
         raw_value = match.group(2)
-        if not re.fullmatch(r"[+-]?\d+", raw_value):
+        if not integer_pattern.fullmatch(raw_value):
             raise ValueError(
                 f"Invalid {key} value in XYZ comment: {raw_value!r}. "
                 "Expected an integer (e.g., charge=0)."
