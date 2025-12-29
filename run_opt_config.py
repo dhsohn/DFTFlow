@@ -77,7 +77,19 @@ def _format_json_decode_error(path, error):
     location = f"line {error.lineno} column {error.colno}"
     message = error.msg
     if message == "Extra data":
-        message = "파일에 JSON 객체가 두 개 이상 있음"
+        remainder = ""
+        if error.doc and error.pos is not None:
+            remainder = error.doc[error.pos : error.pos + 120]
+        preview = repr(remainder) if remainder else "(empty)"
+        common_causes = (
+            "two JSON objects stuck together; extra text after JSON; "
+            "comments are not allowed in standard JSON"
+        )
+        message = (
+            "Extra data after the first JSON value. "
+            f"remainder preview: {preview}. "
+            f"common causes: {common_causes}."
+        )
     return f"Failed to parse JSON file '{path}' ({location}): {message}"
 
 
