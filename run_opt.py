@@ -2767,15 +2767,7 @@ def main():
                             f"{expected_imaginary}."
                         )
                 else:
-                    if args.interactive:
-                        run_single_point = _prompt_yes_no(
-                            "단일점(single point) 계산을 실행할까요?",
-                            default=True,
-                        )
-                        if not run_single_point:
-                            sp_skip_reason = "User skipped single-point calculation."
-                    else:
-                        run_single_point = True
+                    run_single_point = True
             else:
                 logging.info("Skipping single-point energy calculation (disabled).")
                 sp_skip_reason = "Single-point calculation disabled."
