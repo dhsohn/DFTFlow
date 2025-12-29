@@ -1,0 +1,182 @@
+import json
+
+DEFAULT_CHARGE = 0
+DEFAULT_SPIN = None
+DEFAULT_MULTIPLICITY = None
+DEFAULT_CONFIG_PATH = "run_config.json"
+DEFAULT_SOLVENT_MAP_PATH = "solvent_dielectric.json"
+DEFAULT_THREAD_COUNT = None
+DEFAULT_LOG_PATH = "log/run.log"
+DEFAULT_EVENT_LOG_PATH = "log/run_events.jsonl"
+DEFAULT_OPTIMIZED_XYZ_PATH = "optimized.xyz"
+DEFAULT_FREQUENCY_PATH = "frequency.json"
+DEFAULT_RUN_METADATA_PATH = "metadata.json"
+DEFAULT_QUEUE_PATH = "runs/queue.json"
+DEFAULT_QUEUE_LOCK_PATH = "runs/queue.lock"
+DEFAULT_QUEUE_RUNNER_LOCK_PATH = "runs/queue.runner.lock"
+DEFAULT_QUEUE_RUNNER_LOG_PATH = "log/queue_runner.log"
+
+
+def load_run_config(config_path):
+    if not config_path:
+        return {}, None
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        raw_config = config_file.read()
+        try:
+            config = json.loads(raw_config)
+        except json.JSONDecodeError as error:
+            location = f"line {error.lineno} column {error.colno}"
+            raise ValueError(
+                f"Failed to parse JSON config '{config_path}' ({location}): {error.msg}"
+            ) from error
+    return config, raw_config
+
+
+def load_solvent_map(map_path):
+    if not map_path:
+        return {}
+    with open(map_path, "r", encoding="utf-8") as map_file:
+        return json.load(map_file)
+
+
+def _validate_fields(config, rules, prefix=""):
+    for key, (predicate, message) in rules.items():
+        if key in config and config[key] is not None:
+            if not predicate(config[key]):
+                name = f"{prefix}{key}"
+                raise ValueError(message.format(name=name))
+
+
+def validate_run_config(config):
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a JSON object.")
+    is_int = lambda value: isinstance(value, int) and not isinstance(value, bool)
+    is_number = lambda value: isinstance(value, (int, float)) and not isinstance(value, bool)
+    is_bool = lambda value: isinstance(value, bool)
+    is_str = lambda value: isinstance(value, str)
+    is_diis = lambda value: isinstance(value, (bool, int))
+    validation_rules = {
+        "threads": (is_int, "Config '{name}' must be an integer."),
+        "memory_gb": (is_number, "Config '{name}' must be a number (int or float)."),
+        "enforce_os_memory_limit": (is_bool, "Config '{name}' must be a boolean."),
+        "verbose": (is_bool, "Config '{name}' must be a boolean."),
+        "single_point_enabled": (is_bool, "Config '{name}' must be a boolean."),
+        "calculation_mode": (is_str, "Config '{name}' must be a string."),
+        "log_file": (is_str, "Config '{name}' must be a string path."),
+        "event_log_file": (is_str, "Config '{name}' must be a string path."),
+        "optimized_xyz_file": (is_str, "Config '{name}' must be a string path."),
+        "run_metadata_file": (is_str, "Config '{name}' must be a string path."),
+        "frequency_file": (is_str, "Config '{name}' must be a string path."),
+        "basis": (is_str, "Config '{name}' must be a string."),
+        "xc": (is_str, "Config '{name}' must be a string."),
+        "solvent": (is_str, "Config '{name}' must be a string."),
+        "solvent_model": (is_str, "Config '{name}' must be a string."),
+        "solvent_map": (is_str, "Config '{name}' must be a string path."),
+        "dispersion": (is_str, "Config '{name}' must be a string."),
+    }
+    _validate_fields(config, validation_rules)
+    if "optimizer" in config and config["optimizer"] is not None:
+        if not isinstance(config["optimizer"], dict):
+            raise ValueError("Config 'optimizer' must be an object.")
+        optimizer_rules = {
+            "output_xyz": (is_str, "Config '{name}' must be a string path."),
+            "mode": (is_str, "Config '{name}' must be a string."),
+        }
+        _validate_fields(config["optimizer"], optimizer_rules, prefix="optimizer.")
+        if "ase" in config["optimizer"] and config["optimizer"]["ase"] is not None:
+            if not isinstance(config["optimizer"]["ase"], dict):
+                raise ValueError("Config 'optimizer.ase' must be an object.")
+            ase_config = config["optimizer"]["ase"]
+            d3_params = ase_config.get("d3_params")
+            dftd3_params = ase_config.get("dftd3_params")
+            if d3_params is not None and dftd3_params is not None:
+                raise ValueError(
+                    "Config must not define both 'optimizer.ase.d3_params' and "
+                    "'optimizer.ase.dftd3_params'."
+                )
+            chosen_params = d3_params if d3_params is not None else dftd3_params
+            if chosen_params is not None:
+                if not isinstance(chosen_params, dict):
+                    raise ValueError(
+                        "Config 'optimizer.ase.d3_params' must be a JSON object."
+                    )
+                for key, value in chosen_params.items():
+                    if key == "damping" and isinstance(value, dict):
+                        for subkey, subvalue in value.items():
+                            if subkey in ("damping", "variant", "method"):
+                                if not isinstance(subvalue, str):
+                                    raise ValueError(
+                                        "Config 'optimizer.ase.d3_params.damping.{name}' "
+                                        "must be a string.".format(name=subkey)
+                                    )
+                                continue
+                            if subkey == "parameters" and isinstance(subvalue, dict):
+                                for param_key, param_value in subvalue.items():
+                                    if not is_number(param_value):
+                                        raise ValueError(
+                                            "Config 'optimizer.ase.d3_params.damping.parameters.{name}' "
+                                            "must be a number.".format(name=param_key)
+                                        )
+                                continue
+                            if not is_number(subvalue):
+                                raise ValueError(
+                                    "Config 'optimizer.ase.d3_params.damping.{name}' "
+                                    "must be a number.".format(name=subkey)
+                                )
+                        continue
+                    if key == "parameters" and isinstance(value, dict):
+                        for param_key, param_value in value.items():
+                            if not is_number(param_value):
+                                raise ValueError(
+                                    "Config 'optimizer.ase.d3_params.parameters.{name}' "
+                                    "must be a number.".format(name=param_key)
+                                )
+                        continue
+                    if not is_number(value):
+                        raise ValueError(
+                            "Config 'optimizer.ase.d3_params.{name}' must be a number.".format(
+                                name=key
+                            )
+                        )
+    if "scf" in config and config["scf"] is not None:
+        if not isinstance(config["scf"], dict):
+            raise ValueError("Config 'scf' must be an object.")
+        scf_validation_rules = {
+            "max_cycle": (is_int, "Config '{name}' must be an integer."),
+            "conv_tol": (is_number, "Config '{name}' must be a number (int or float)."),
+            "level_shift": (is_number, "Config '{name}' must be a number (int or float)."),
+            "damping": (is_number, "Config '{name}' must be a number (int or float)."),
+            "diis": (is_diis, "Config '{name}' must be a boolean or integer."),
+        }
+        _validate_fields(config["scf"], scf_validation_rules, prefix="scf.")
+    if "single_point" in config and config["single_point"] is not None:
+        if not isinstance(config["single_point"], dict):
+            raise ValueError("Config 'single_point' must be an object.")
+        single_point_rules = {
+            "basis": (is_str, "Config '{name}' must be a string."),
+            "xc": (is_str, "Config '{name}' must be a string."),
+            "solvent": (is_str, "Config '{name}' must be a string."),
+            "solvent_model": (is_str, "Config '{name}' must be a string."),
+            "solvent_map": (is_str, "Config '{name}' must be a string path."),
+            "dispersion": (is_str, "Config '{name}' must be a string."),
+        }
+        _validate_fields(config["single_point"], single_point_rules, prefix="single_point.")
+        if "scf" in config["single_point"] and config["single_point"]["scf"] is not None:
+            if not isinstance(config["single_point"]["scf"], dict):
+                raise ValueError("Config 'single_point.scf' must be an object.")
+            scf_validation_rules = {
+                "max_cycle": (is_int, "Config '{name}' must be an integer."),
+                "conv_tol": (is_number, "Config '{name}' must be a number (int or float)."),
+                "level_shift": (is_number, "Config '{name}' must be a number (int or float)."),
+                "damping": (is_number, "Config '{name}' must be a number (int or float)."),
+                "diis": (is_diis, "Config '{name}' must be a boolean or integer."),
+            }
+            _validate_fields(config["single_point"]["scf"], scf_validation_rules, prefix="single_point.scf.")
+    for frequency_key in ("frequency", "freq"):
+        if frequency_key in config and config[frequency_key] is not None:
+            if not isinstance(config[frequency_key], dict):
+                raise ValueError(f"Config '{frequency_key}' must be an object.")
+            frequency_rules = {
+                "dispersion": (is_str, "Config '{name}' must be a string."),
+            }
+            _validate_fields(config[frequency_key], frequency_rules, prefix=f"{frequency_key}.")
