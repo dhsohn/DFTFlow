@@ -195,6 +195,45 @@ python run_opt.py validate-config run_config_ase.json
 
 ---
 
+## 디버깅/테스트
+
+### 1) 내장 설정 검증 테스트(가벼운 스모크 체크)
+목적: 기본 템플릿 설정(JSON)이 로드/스키마 검증을 통과하는지 빠르게 확인합니다.
+
+실행:
+```bash
+python run_opt.py --validate-only --config run_config_ase.json
+python run_opt.py --validate-only --config run_config_ts.json
+```
+
+필요한 파일:
+- 설정 파일: `run_config_ase.json` 또는 `run_config_ts.json`
+
+로그/출력 위치:
+- 콘솔(stdout)에 검증 결과가 출력됩니다. (`runs/` 폴더는 생성되지 않습니다.)
+
+성공 기준:
+- `Config validation passed: <config>` 메시지가 표시되고 종료 코드가 0이면 성공입니다.
+
+### 2) pytest 기반 단위 테스트
+목적: 설정 파서/분산 설정 로직 등 핵심 유틸리티의 회귀를 확인합니다.
+
+실행:
+```bash
+python -m pytest tests
+```
+
+필요한 파일:
+- 테스트가 참조하는 설정 템플릿: `run_config_ase.json`, `run_config_ts.json`
+
+로그/출력 위치:
+- pytest 결과가 콘솔(stdout)에 출력됩니다.
+
+성공 기준:
+- `tests/...`가 모두 `passed`로 표시되면 성공입니다.
+
+---
+
 ## 출력(Results)
 
 각 실행은 `runs/YYYY-MM-DD_HHMMSS/` 아래에 폴더가 생성되며, 보통 다음이 포함됩니다.
@@ -258,6 +297,17 @@ python run_opt.py validate-config run_config_ase.json
   python -c "import pyscf; print(pyscf.__file__)"
   ```
   출력이 이상하거나 `None`이면 PySCF를 재설치/환경 정리가 필요합니다.
+
+### 5) `ModuleNotFoundError: No module named 'pytest'` (테스트 실행 시)
+- 원인: 개발용 테스트 의존성이 설치되지 않음
+- 해결:
+  ```bash
+  python -m pip install -r requirements-dev.txt
+  ```
+
+### 6) `FileNotFoundError: run_config_ase.json` (테스트/검증 실행 시)
+- 원인: 저장소 루트가 아닌 다른 경로에서 실행
+- 해결: `cd pDFT` 후 실행하거나, 설정 파일 경로를 절대/상대 경로로 정확히 지정하세요.
 
 ---
 
