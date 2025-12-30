@@ -6,3 +6,7 @@ target-version = "py312"
 
 [tool.ruff.format]
 line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["pyscf"]
