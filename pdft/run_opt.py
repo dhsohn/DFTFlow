@@ -2027,7 +2027,10 @@ def main():
             sp_scf_config = single_point_config.get("scf") or scf_config
             sp_solvent_name = single_point_config.get("solvent") or solvent_name
             sp_solvent_model = single_point_config.get("solvent_model") or solvent_model
-            sp_dispersion_model = single_point_config.get("dispersion")
+            if "dispersion" in single_point_config:
+                sp_dispersion_model = single_point_config.get("dispersion")
+            else:
+                sp_dispersion_model = dispersion_model
             sp_solvent_map_path = single_point_config.get("solvent_map") or solvent_map_path
             if not sp_basis:
                 raise ValueError(
@@ -2085,11 +2088,15 @@ def main():
             freq_dispersion_mode = _normalize_frequency_dispersion_mode(
                 frequency_config.get("dispersion")
             )
+            if "dispersion_model" in frequency_config:
+                freq_dispersion_raw = frequency_config.get("dispersion_model")
+            else:
+                freq_dispersion_raw = sp_dispersion_model
 
             freq_dispersion_model = _normalize_dispersion_settings(
                 "Frequency",
                 sp_xc,
-                sp_dispersion_model,
+                freq_dispersion_raw,
                 allow_dispersion=True,
             )
 
