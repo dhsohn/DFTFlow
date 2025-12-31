@@ -99,7 +99,11 @@ CALCULATION_MODE_OPTIONS = [
 
 def _build_atom_spec_from_ase(atoms):
     lines = []
-    for symbol, (x, y, z) in zip(atoms.get_chemical_symbols(), atoms.get_positions()):
+    for symbol, (x, y, z) in zip(
+        atoms.get_chemical_symbols(),
+        atoms.get_positions()),
+        strict=True,
+    ):
         lines.append(f"{symbol} {x:.8f} {y:.8f} {z:.8f}")
     return "\n".join(lines)
 
