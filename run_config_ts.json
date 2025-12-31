@@ -29,7 +29,7 @@
     }
   },
   "solvent": "vacuum",
-  "solvent_model": "smd",
+  "solvent_model": null,
   "solvent_map": "solvent_dielectric.json",
   "log_file": "run.log",
   "scf": {
@@ -44,7 +44,7 @@
     "xc": "b3lyp",
     "dispersion": "d3bj",
     "solvent": "vacuum",
-    "solvent_model": "smd",
+    "solvent_model": null,
     "solvent_map": "solvent_dielectric.json",
     "scf": {
       "max_cycle": 200,
