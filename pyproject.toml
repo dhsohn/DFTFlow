@@ -1,3 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdft"
+version = "0.1.0"
+description = "Lightweight PySCF/ASE workflow for geometry optimization and analysis."
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = ["pdft"]
+
 [tool.ruff.lint]
 select = ["E", "F", "B"]
 ignore = ["E501"]
@@ -8,3 +22,4 @@ docstring-code-line-length = 100
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["pyscf"]
+pythonpath = ["."]
