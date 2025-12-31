@@ -404,5 +404,6 @@ def validate_run_config(config):
                 raise ValueError(f"Config '{frequency_key}' must be an object.")
             frequency_rules = {
                 "dispersion": (is_str, "Config '{name}' must be a string."),
+                "dispersion_model": (is_str, "Config '{name}' must be a string."),
             }
             _validate_fields(config[frequency_key], frequency_rules, prefix=f"{frequency_key}.")
