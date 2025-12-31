@@ -1,1 +1,6 @@
 pytest.ini
+
+.DS_Store
+__pycache__/
+runs/
+tests/__pycache__/
