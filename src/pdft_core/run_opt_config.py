@@ -92,6 +92,14 @@ RUN_CONFIG_SCHEMA = {
                     "type": ["object", "null"],
                     "required": [],
                     "properties": {
+                        "d3_backend": {
+                            "type": ["string", "null"],
+                            "enum": ["dftd3", None],
+                        },
+                        "dftd3_backend": {
+                            "type": ["string", "null"],
+                            "enum": ["dftd3", None],
+                        },
                         "d3_params": {"type": ["object", "null"]},
                         "dftd3_params": {"type": ["object", "null"]},
                         "optimizer": {"type": ["string", "null"]},
@@ -368,6 +376,8 @@ class SCFConfig:
 @dataclass(frozen=True)
 class OptimizerASEConfig:
     raw: dict[str, Any]
+    d3_backend: str | None = None
+    dftd3_backend: str | None = None
     d3_params: dict[str, Any] | None = None
     dftd3_params: dict[str, Any] | None = None
     optimizer: str | None = None
@@ -385,6 +395,8 @@ class OptimizerASEConfig:
             raise ValueError("Config 'optimizer.ase' must be an object.")
         return cls(
             raw=dict(data),
+            d3_backend=data.get("d3_backend"),
+            dftd3_backend=data.get("dftd3_backend"),
             d3_params=data.get("d3_params"),
             dftd3_params=data.get("dftd3_params"),
             optimizer=data.get("optimizer"),
@@ -1013,6 +1025,20 @@ def validate_run_config(config):
             if not isinstance(config["optimizer"]["ase"], dict):
                 raise ValueError("Config 'optimizer.ase' must be an object.")
             ase_config = config["optimizer"]["ase"]
+            for backend_key in ("d3_backend", "dftd3_backend"):
+                backend_value = ase_config.get(backend_key)
+                if backend_value is None:
+                    continue
+                if not isinstance(backend_value, str):
+                    raise ValueError(
+                        f"Config 'optimizer.ase.{backend_key}' must be a string."
+                    )
+                if backend_value.strip().lower() != "dftd3":
+                    raise ValueError(
+                        "Config 'optimizer.ase.{name}' must be 'dftd3'.".format(
+                            name=backend_key
+                        )
+                    )
             d3_params = ase_config.get("d3_params")
             dftd3_params = ase_config.get("dftd3_params")
             if d3_params is not None and dftd3_params is not None:
@@ -1020,11 +1046,16 @@ def validate_run_config(config):
                     "Config must not define both 'optimizer.ase.d3_params' and "
                     "'optimizer.ase.dftd3_params'."
                 )
-            chosen_params = d3_params if d3_params is not None else dftd3_params
+            if d3_params is not None:
+                chosen_params = d3_params
+                param_prefix = "optimizer.ase.d3_params"
+            else:
+                chosen_params = dftd3_params
+                param_prefix = "optimizer.ase.dftd3_params"
             if chosen_params is not None:
                 if not isinstance(chosen_params, dict):
                     raise ValueError(
-                        "Config 'optimizer.ase.d3_params' must be a JSON object."
+                        f"Config '{param_prefix}' must be a JSON object."
                     )
                 for key, value in chosen_params.items():
                     if key == "damping" and isinstance(value, dict):
@@ -1032,37 +1063,37 @@ def validate_run_config(config):
                             if subkey in ("damping", "variant", "method"):
                                 if not isinstance(subvalue, str):
                                     raise ValueError(
-                                        "Config 'optimizer.ase.d3_params.damping.{name}' "
-                                        "must be a string.".format(name=subkey)
+                                        f"Config '{param_prefix}.damping.{subkey}' must be a string."
                                     )
                                 continue
                             if subkey == "parameters" and isinstance(subvalue, dict):
                                 for param_key, param_value in subvalue.items():
                                     if not is_number(param_value):
                                         raise ValueError(
-                                            "Config 'optimizer.ase.d3_params.damping.parameters.{name}' "
-                                            "must be a number.".format(name=param_key)
+                                            "Config '{prefix}.damping.parameters.{name}' "
+                                            "must be a number.".format(
+                                                prefix=param_prefix, name=param_key
+                                            )
                                         )
                                 continue
                             if not is_number(subvalue):
                                 raise ValueError(
-                                    "Config 'optimizer.ase.d3_params.damping.{name}' "
-                                    "must be a number.".format(name=subkey)
+                                    "Config '{prefix}.damping.{name}' "
+                                    "must be a number.".format(prefix=param_prefix, name=subkey)
                                 )
                         continue
                     if key == "parameters" and isinstance(value, dict):
                         for param_key, param_value in value.items():
                             if not is_number(param_value):
                                 raise ValueError(
-                                    "Config 'optimizer.ase.d3_params.parameters.{name}' "
-                                    "must be a number.".format(name=param_key)
+                                    "Config '{prefix}.parameters.{name}' must be a number.".format(
+                                        prefix=param_prefix, name=param_key
+                                    )
                                 )
                         continue
                     if not is_number(value):
                         raise ValueError(
-                            "Config 'optimizer.ase.d3_params.{name}' must be a number.".format(
-                                name=key
-                            )
+                            f"Config '{param_prefix}.{key}' must be a number."
                         )
     if "scf" in config and config["scf"] is not None:
         if not isinstance(config["scf"], dict):
