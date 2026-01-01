@@ -31,6 +31,7 @@ class RunContext(TypedDict):
     run_metadata_path: str
     frequency_output_path: str
     irc_output_path: str
+    irc_profile_csv_path: str
     scan_result_path: str
     scan_result_csv_path: str
     event_log_path: str | None

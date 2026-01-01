@@ -7,6 +7,7 @@ from ..run_opt_config import (
     DEFAULT_EVENT_LOG_PATH,
     DEFAULT_FREQUENCY_PATH,
     DEFAULT_IRC_PATH,
+    DEFAULT_IRC_PROFILE_CSV_PATH,
     DEFAULT_LOG_PATH,
     DEFAULT_OPTIMIZED_XYZ_PATH,
     DEFAULT_RUN_METADATA_PATH,
@@ -113,6 +114,9 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         run_dir, config.frequency_file or DEFAULT_FREQUENCY_PATH
     )
     irc_output_path = resolve_run_path(run_dir, config.irc_file or DEFAULT_IRC_PATH)
+    irc_profile_csv_path = resolve_run_path(
+        run_dir, config.irc_profile_csv_file or DEFAULT_IRC_PROFILE_CSV_PATH
+    )
     scan_result_path = resolve_run_path(run_dir, DEFAULT_SCAN_RESULT_PATH)
     scan_result_csv_path = resolve_run_path(
         run_dir, config.scan_result_csv_file or DEFAULT_SCAN_RESULT_CSV_PATH
@@ -122,6 +126,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     ensure_parent_dir(run_metadata_path)
     ensure_parent_dir(frequency_output_path)
     ensure_parent_dir(irc_output_path)
+    ensure_parent_dir(irc_profile_csv_path)
     ensure_parent_dir(scan_result_path)
     ensure_parent_dir(scan_result_csv_path)
 
@@ -207,6 +212,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         "run_metadata_path": run_metadata_path,
         "frequency_output_path": frequency_output_path,
         "irc_output_path": irc_output_path,
+        "irc_profile_csv_path": irc_profile_csv_path,
         "scan_result_path": scan_result_path,
         "scan_result_csv_path": scan_result_csv_path,
         "event_log_path": event_log_path,
