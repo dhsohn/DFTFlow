@@ -17,7 +17,6 @@ _D3_TWEAK_KEYS = {
     "a2",
     # Zero damping / ATM
     "alp",
-    # ASE wrapper also supports these (depending on damping choice)
     "sr6",
     "sr8",
     "alpha6",
@@ -32,24 +31,11 @@ def load_d3_calculator(prefer_backend=None):
 
     backend_label is one of:
       - "dftd3"  (simple-dftd3 / dftd3-python)
-      - "ase"    (ASE wrapper around the external `dftd3` binary)
     """
 
     normalized_preference = str(prefer_backend or "").strip().lower()
-    if normalized_preference == "dftd3":
-        try:
-            from dftd3.ase import DFTD3
-
-            return DFTD3, "dftd3"
-        except ImportError:
-            return None, None
-    if normalized_preference == "ase":
-        try:
-            from ase.calculators.dftd3 import DFTD3
-
-            return DFTD3, "ase"
-        except ImportError:
-            return None, None
+    if normalized_preference and normalized_preference != "dftd3":
+        return None, None
 
     # Auto: prefer the Python API if present.
     try:
@@ -57,12 +43,7 @@ def load_d3_calculator(prefer_backend=None):
 
         return DFTD3, "dftd3"
     except ImportError:
-        try:
-            from ase.calculators.dftd3 import DFTD3
-
-            return DFTD3, "ase"
-        except ImportError:
-            return None, None
+        return None, None
 
 
 def _signature_info(callable_obj):
@@ -147,7 +128,7 @@ def _split_d3_params(d3_params):
                 tweak_params[key_str] = _coerce_float(value, path)
                 continue
 
-            # Avoid passing nested dicts directly to ASE calculators (they may
+            # Avoid passing nested dicts directly to calculators (they may
             # interpret some keys specially, e.g. `parameters`).
             if isinstance(value, dict):
                 logging.debug(
@@ -162,19 +143,12 @@ def _split_d3_params(d3_params):
     return other_settings, tweak_params
 
 
-def _select_xc_keyword(d3_backend, param_names, accepts_kwargs):
+def _select_xc_keyword(param_names, accepts_kwargs):
     # simple-dftd3 docs use `method=`
-    if d3_backend == "dftd3":
-        for key in ("method", "xc", "functional", "func"):
-            if key in param_names or accepts_kwargs:
-                return key
-        return "method"
-
-    # ASE wrapper docs use `xc=` or `func=`
-    for key in ("xc", "func", "method", "functional"):
+    for key in ("method", "xc", "functional", "func"):
         if key in param_names or accepts_kwargs:
             return key
-    return "xc"
+    return "method"
 
 
 def _select_damping_keyword(param_names, accepts_kwargs):
@@ -216,20 +190,17 @@ def parse_dispersion_settings(
         base_variant = None
 
     if base_variant is not None:
-        d3_cls, d3_backend = load_d3_calculator(prefer_d3_backend)
+        d3_cls, _ = load_d3_calculator(prefer_d3_backend)
         if d3_cls is None:
             raise ImportError(
                 "DFTD3 dispersion requested but no DFTD3 calculator is available. "
-                "Install `dftd3` (recommended) or `ase` with the DFTD3 binary available."
+                "Install `dftd3` (recommended)."
             )
 
-        # Map the damping name to the backend.
-        damping_value = (
-            f"d3{base_variant}" if d3_backend == "dftd3" else base_variant
-        )
+        damping_value = f"d3{base_variant}"
 
         param_names, accepts_kwargs = _signature_info(d3_cls)
-        xc_key = _select_xc_keyword(d3_backend, param_names, accepts_kwargs)
+        xc_key = _select_xc_keyword(param_names, accepts_kwargs)
         damping_key = _select_damping_keyword(param_names, accepts_kwargs)
 
         settings = {xc_key: xc, damping_key: damping_value}
@@ -245,31 +216,24 @@ def parse_dispersion_settings(
                 settings[key] = value
             else:
                 logging.debug(
-                    "Ignoring unsupported D3 setting '%s' for backend '%s'",
+                    "Ignoring unsupported D3 setting '%s' for dftd3 backend",
                     key,
-                    d3_backend,
                 )
 
         # Add damping tweaks (backend-specific).
         if tweak_params:
-            if d3_backend == "dftd3":
-                # simple-dftd3 uses `params_tweaks`.
-                if accepts_kwargs or "params_tweaks" in param_names:
-                    existing = settings.get("params_tweaks")
-                    merged = {}
-                    if isinstance(existing, dict):
-                        merged.update(existing)
-                    merged.update(tweak_params)
-                    settings["params_tweaks"] = merged
-                else:
-                    logging.debug(
-                        "DFTD3 tweaks were provided but the calculator does not accept params_tweaks; ignoring."
-                    )
+            # simple-dftd3 uses `params_tweaks`.
+            if accepts_kwargs or "params_tweaks" in param_names:
+                existing = settings.get("params_tweaks")
+                merged = {}
+                if isinstance(existing, dict):
+                    merged.update(existing)
+                merged.update(tweak_params)
+                settings["params_tweaks"] = merged
             else:
-                # ASE wrapper exposes tweak keys as top-level kwargs.
-                for key, value in tweak_params.items():
-                    if accepts_kwargs or key in param_names:
-                        settings[key] = value
+                logging.debug(
+                    "DFTD3 tweaks were provided but the calculator does not accept params_tweaks; ignoring."
+                )
 
         return {"backend": "d3", "settings": settings}
 

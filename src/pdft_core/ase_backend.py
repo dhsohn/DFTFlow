@@ -1,5 +1,3 @@
-import shutil
-
 from .run_opt_engine import (
     apply_scf_checkpoint,
     apply_scf_settings,
@@ -49,11 +47,6 @@ def _build_pyscf_calculator(
 
     xc = normalize_xc_functional(xc)
     d3_params = optimizer_config.get("d3_params") or optimizer_config.get("dftd3_params")
-    prefer_d3_backend = optimizer_config.get("d3_backend") or optimizer_config.get("dftd3_backend")
-    d3_command = optimizer_config.get("d3_command") or optimizer_config.get("dftd3_command")
-    d3_command_validate = optimizer_config.get("d3_command_validate", True)
-    if not prefer_d3_backend and d3_command:
-        prefer_d3_backend = "ase"
     ks_type = select_ks_type(
         spin=spin,
         scf_config=scf_config,
@@ -67,7 +60,7 @@ def _build_pyscf_calculator(
             charge=charge,
             spin=spin,
             d3_params=d3_params,
-            prefer_d3_backend=prefer_d3_backend,
+            prefer_d3_backend=None,
         )
         if dispersion_model
         else None
@@ -146,21 +139,12 @@ def _build_pyscf_calculator(
         backend = dispersion_settings["backend"]
         settings = dict(dispersion_settings["settings"])
         if backend == "d3":
-            d3_cls, d3_backend = load_d3_calculator(prefer_d3_backend)
+            d3_cls, _ = load_d3_calculator(None)
             if d3_cls is None:
                 raise ImportError(
                     "DFTD3 dispersion requested but no DFTD3 calculator is available. "
-                    "Install `dftd3` (recommended) or `ase` with the DFTD3 binary available."
+                    "Install `dftd3` (recommended)."
                 )
-            if d3_backend == "ase" and d3_command:
-                d3_command_path = shutil.which(d3_command)
-                if d3_command_validate and d3_command_path is None:
-                    raise ValueError(
-                        "DFTD3 command '{command}' was not found on PATH. "
-                        "Install the DFTD3 binary and set optimizer.ase.d3_command "
-                        "to the full path.".format(command=d3_command)
-                    )
-                settings["command"] = d3_command
             dispersion_calc = d3_cls(atoms=atoms, **settings)
         else:
             from dftd4.ase import DFTD4

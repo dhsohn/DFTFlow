@@ -23,21 +23,14 @@ def _compute_dispersion_energy(atoms, dispersion_settings):
     backend = dispersion_settings["backend"]
     settings = dispersion_settings["settings"]
     if backend == "d3":
-        d3_cls, d3_backend = load_d3_calculator()
+        d3_cls, _ = load_d3_calculator()
         if d3_cls is None:
             raise ImportError(
                 "DFTD3 dispersion requested but no DFTD3 calculator is available. "
-                "Install `dftd3` (recommended) or `ase` with the DFTD3 binary available."
+                "Install `dftd3` (recommended)."
             )
         d3_calc = d3_cls(atoms=atoms, **settings)
-        try:
-            label = "dftd3" if d3_backend == "dftd3" else "ase-dftd3"
-            return d3_calc.get_potential_energy(atoms=atoms), label
-        except FileNotFoundError:
-            raise RuntimeError(
-                "DFTD3 executable not found. Install `dftd3` or set optimizer.ase.d3_command "
-                "(or optimizer.ase.dftd3_command) to the full path of the DFTD3 binary."
-            ) from None
+        return d3_calc.get_potential_energy(atoms=atoms), "dftd3"
     from dftd4.ase import DFTD4
 
     d4_calc = DFTD4(atoms=atoms, **settings)
