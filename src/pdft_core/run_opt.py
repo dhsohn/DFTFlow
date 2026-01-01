@@ -156,43 +156,75 @@ def main():
     parser = cli.build_parser()
     args = parser.parse_args(cli._normalize_cli_args(sys.argv[1:]))
 
-    if args.doctor:
-        workflow.run_doctor()
-        return
-
-    run_in_background = bool(args.background and not args.no_background)
-    if args.interactive and args.non_interactive:
-        raise ValueError("--interactive and --non-interactive cannot be used together.")
-    if args.resume and args.run_dir:
-        raise ValueError("--resume and --run-dir cannot be used together.")
-    if args.resume and args.scan_dimension:
-        raise ValueError("--scan-dimension cannot be used with --resume.")
-    if args.resume and args.scan_grid:
-        raise ValueError("--scan-grid cannot be used with --resume.")
-    if args.resume and args.scan_mode:
-        raise ValueError("--scan-mode cannot be used with --resume.")
-    if args.resume and args.xyz_file:
-        raise ValueError("xyz_file cannot be provided when using --resume.")
-    if args.resume and args.interactive:
-        raise ValueError("--interactive cannot be used with --resume.")
-    if args.validate_only and args.interactive:
-        raise ValueError("--validate-only cannot be used with --interactive.")
-    if args.interactive is None:
-        args.interactive = not args.non_interactive
-    if args.validate_only:
-        args.interactive = False
-        args.non_interactive = True
-    if args.resume:
-        args.interactive = False
-        args.non_interactive = True
-    if args.queue_status:
-        queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-        with queue.queue_lock(DEFAULT_QUEUE_LOCK_PATH):
-            queue_state = queue.load_queue(DEFAULT_QUEUE_PATH)
-        queue.format_queue_status(queue_state)
-        return
-
     try:
+        if args.command == "doctor":
+            workflow.run_doctor()
+            return
+
+        if args.command == "queue":
+            if args.queue_command == "status":
+                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                with queue.queue_lock(DEFAULT_QUEUE_LOCK_PATH):
+                    queue_state = queue.load_queue(DEFAULT_QUEUE_PATH)
+                queue.format_queue_status(queue_state)
+                return
+            if args.queue_command == "cancel":
+                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                canceled, error = queue.cancel_queue_entry(
+                    DEFAULT_QUEUE_PATH,
+                    DEFAULT_QUEUE_LOCK_PATH,
+                    args.run_id,
+                )
+                if not canceled:
+                    raise ValueError(error)
+                print(f"Canceled queued run: {args.run_id}")
+                return
+            if args.queue_command == "retry":
+                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                retried, error = queue.requeue_queue_entry(
+                    DEFAULT_QUEUE_PATH,
+                    DEFAULT_QUEUE_LOCK_PATH,
+                    args.run_id,
+                    reason="retry",
+                )
+                if not retried:
+                    raise ValueError(error)
+                print(f"Re-queued run: {args.run_id}")
+                return
+            if args.queue_command == "requeue-failed":
+                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                count = queue.requeue_failed_entries(
+                    DEFAULT_QUEUE_PATH, DEFAULT_QUEUE_LOCK_PATH
+                )
+                print(f"Re-queued failed runs: {count}")
+                return
+
+        if args.command == "status":
+            if args.recent and args.run_path:
+                raise ValueError("--recent cannot be used with a run path.")
+            if args.recent:
+                queue.print_recent_statuses(args.recent)
+                return
+            if args.run_path:
+                queue.print_status(args.run_path, DEFAULT_RUN_METADATA_PATH)
+                return
+            raise ValueError("status requires a run path or --recent.")
+
+        if args.command == "validate-config":
+            config_path = args.config_path or args.config
+            config_path = Path(config_path).expanduser().resolve()
+            config, _config_raw = load_run_config(config_path)
+            try:
+                build_run_config(config)
+            except ValueError as error:
+                message = str(error)
+                print(message, file=sys.stderr)
+                logging.error(message)
+                raise
+            print(f"Config validation passed: {config_path}")
+            return
+
+        run_in_background = bool(args.background and not args.no_background)
         if args.queue_runner:
             queue.run_queue_worker(
                 os.path.abspath(sys.argv[0]),
@@ -202,42 +234,25 @@ def main():
             )
             return
 
-        if args.queue_cancel:
-            queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-            canceled, error = queue.cancel_queue_entry(
-                DEFAULT_QUEUE_PATH,
-                DEFAULT_QUEUE_LOCK_PATH,
-                args.queue_cancel,
-            )
-            if not canceled:
-                raise ValueError(error)
-            print(f"Canceled queued run: {args.queue_cancel}")
-            return
-        if args.queue_retry:
-            queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-            retried, error = queue.requeue_queue_entry(
-                DEFAULT_QUEUE_PATH,
-                DEFAULT_QUEUE_LOCK_PATH,
-                args.queue_retry,
-                reason="retry",
-            )
-            if not retried:
-                raise ValueError(error)
-            print(f"Re-queued run: {args.queue_retry}")
-            return
-        if args.queue_requeue_failed:
-            queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
-            count = queue.requeue_failed_entries(DEFAULT_QUEUE_PATH, DEFAULT_QUEUE_LOCK_PATH)
-            print(f"Re-queued failed runs: {count}")
-            return
-
-        if args.status_recent:
-            queue.print_recent_statuses(args.status_recent)
-            return
-
-        if args.status:
-            queue.print_status(args.status, DEFAULT_RUN_METADATA_PATH)
-            return
+        if args.interactive and args.non_interactive:
+            raise ValueError("--interactive and --non-interactive cannot be used together.")
+        if args.resume and args.run_dir:
+            raise ValueError("--resume and --run-dir cannot be used together.")
+        if args.resume and args.scan_dimension:
+            raise ValueError("--scan-dimension cannot be used with --resume.")
+        if args.resume and args.scan_grid:
+            raise ValueError("--scan-grid cannot be used with --resume.")
+        if args.resume and args.scan_mode:
+            raise ValueError("--scan-mode cannot be used with --resume.")
+        if args.resume and args.xyz_file:
+            raise ValueError("xyz_file cannot be provided when using --resume.")
+        if args.resume and args.interactive:
+            raise ValueError("--interactive cannot be used with --resume.")
+        if args.interactive is None:
+            args.interactive = not args.non_interactive
+        if args.resume:
+            args.interactive = False
+            args.non_interactive = True
 
         config_source_path = None
         if args.resume:
@@ -259,10 +274,8 @@ def main():
             if config_source_path is not None:
                 config_source_path = Path(config_source_path).resolve()
         else:
-            if not args.xyz_file and not args.validate_only:
-                raise ValueError(
-                    "xyz_file is required unless --status or --validate-only is used."
-                )
+            if not args.xyz_file:
+                raise ValueError("xyz_file is required unless --resume is used.")
             config_path = Path(args.config).expanduser().resolve()
             config, config_raw = load_run_config(config_path)
             args.config = str(config_path)
@@ -305,10 +318,6 @@ def main():
                     ),
                     file=sys.stderr,
                 )
-        if args.validate_only:
-            print(f"Config validation passed: {args.config}")
-            return
-
         workflow.run(args, config, config_raw, config_source_path, run_in_background)
     except Exception:
         logging.exception("Run failed.")
