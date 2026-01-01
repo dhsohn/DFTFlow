@@ -670,6 +670,8 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "scan_result_path": scan_result_path,
         "event_log_path": event_log_path,
         "run_id": run_id,
+        "resume_dir": resume_dir,
+        "pyscf_chkfile": pyscf_chkfile,
         "irc_enabled": irc_enabled,
         "irc_config": irc_config,
         "previous_status": getattr(args, "resume_previous_status", None),
@@ -2303,7 +2305,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             else scf_config
         )
         sp_chkfile = _resolve_scf_chkfile(sp_scf_config, run_dir)
-        if resume_dir and sp_chkfile and sp_chkfile != pyscf_chkfile:
+        if context.get("resume_dir") and sp_chkfile and sp_chkfile != context.get("pyscf_chkfile"):
             _warn_missing_chkfile("Resume mode (single-point):", sp_chkfile)
         sp_solvent_name = (
             single_point_config.solvent
