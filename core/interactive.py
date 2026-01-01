@@ -1,5 +1,4 @@
 import json
-import os
 from importlib import resources
 from pathlib import Path
 
@@ -44,6 +43,17 @@ def _resolve_interactive_config_path(filename: str) -> Path | None:
     fallback_path = _REPO_ROOT / filename
     if fallback_path.is_file():
         return fallback_path
+    return None
+
+
+def _resolve_interactive_input_dir() -> Path | None:
+    preferred_paths = [
+        _REPO_ROOT / "input",
+        Path(__file__).resolve().parent / "input",
+    ]
+    for path in preferred_paths:
+        if path.is_dir():
+            return path
     return None
 
 
@@ -125,12 +135,22 @@ def _prompt_interactive_config(args):
         raise ValueError(f"Failed to load base config from {base_config_path}.")
 
     if not args.xyz_file:
-        input_dir = os.path.join(os.path.dirname(__file__), "input")
+        input_dir = _resolve_interactive_input_dir()
+        if input_dir is None:
+            expected_repo = _REPO_ROOT / "input"
+            expected_core = Path(__file__).resolve().parent / "input"
+            expected_paths = [
+                str(path) for path in (expected_repo, expected_core) if path is not None
+            ]
+            hint = ", ".join(expected_paths) if expected_paths else "input/"
+            raise FileNotFoundError(
+                "인터랙티브 입력 디렉토리를 찾을 수 없습니다. "
+                f"다음 경로 중 하나에 input 디렉토리가 있어야 합니다: {hint}"
+            )
         input_xyz_files = sorted(
-            filename
-            for filename in os.listdir(input_dir)
-            if filename.lower().endswith(".xyz")
-            and os.path.isfile(os.path.join(input_dir, filename))
+            path.name
+            for path in input_dir.iterdir()
+            if path.is_file() and path.suffix.lower() == ".xyz"
         )
         if not input_xyz_files:
             raise ValueError("input 디렉토리에 .xyz 파일이 없습니다.")
@@ -138,7 +158,7 @@ def _prompt_interactive_config(args):
             "인풋 파일을 선택하세요 (.xyz):",
             input_xyz_files,
         )
-        args.xyz_file = os.path.join(input_dir, selected_xyz)
+        args.xyz_file = str(input_dir / selected_xyz)
 
     basis = _prompt_choice(
         "basis set을 선택하세요:",
