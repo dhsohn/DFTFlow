@@ -51,7 +51,7 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 ### 2) 용매 모델
 - `vacuum`(기본): 용매 처리 없음
 - `pcm`: 유전율(ε)이 필요하며 `solvent_dielectric.json`에서 solvent → ε를 조회
-- `smd`: PySCF가 SMD를 포함하도록 빌드/설치된 경우에만 사용 가능
+- `smd`: PySCF가 SMD를 포함하도록 빌드
 
 ### 3) 분산 보정(Dispersion)
 - `d3bj`, `d3zero`, `d4`를 지원합니다.
@@ -164,10 +164,7 @@ conda-lock lock -f environment.yml -p win-64
 conda-lock install --name pdft conda-lock.yml
 ```
 
-#### 3) PySCF 소스 빌드(기본 경로, ENABLE_SMD 포함/불포함 선택)
-기본적으로 소스 빌드를 사용하며, `ENABLE_SMD` 옵션으로 SMD 포함 여부를 선택합니다.
-
-##### SMD 포함 빌드(권장)
+#### 3) PySCF 소스 빌드
 ```bash
 git clone https://github.com/pyscf/pyscf.git
 cd pyscf
@@ -175,21 +172,6 @@ cd pyscf
 mkdir -p build
 cmake -S pyscf/lib -B build \
   -DENABLE_SMD=ON \
-  -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
-cmake --build build -j4
-
-python -m pip install -e . --no-build-isolation
-```
-
-##### SMD 미포함 빌드(비권장)
-SMD를 사용하지 않더라도, 소스 빌드를 통해 의존성 호환성을 유지하는 것을 권장합니다.
-```bash
-git clone https://github.com/pyscf/pyscf.git
-cd pyscf
-
-mkdir -p build
-cmake -S pyscf/lib -B build \
-  -DENABLE_SMD=OFF \
   -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
 cmake --build build -j4
 
