@@ -1,6 +1,6 @@
 import shutil
 
-from .run_opt_chemistry import (
+from .run_opt_engine import (
     apply_scf_settings,
     apply_solvent_model,
     normalize_xc_functional,
