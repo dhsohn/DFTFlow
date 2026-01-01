@@ -1263,6 +1263,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
     dispersion_model = context["dispersion_model"]
     optimizer_mode = context["optimizer_mode"]
     solvent_map_path = context["solvent_map_path"]
+    single_point_config = context["single_point_config"]
     config_raw = context["config_raw"]
     thread_count = context["thread_count"]
     memory_gb = context["memory_gb"]
