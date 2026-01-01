@@ -7,7 +7,7 @@ name = "pdft"
 version = "0.1.0"
 description = "Lightweight PySCF/ASE workflow for geometry optimization and analysis."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = ["jsonschema>=4.18"]
 
 [project.optional-dependencies]
