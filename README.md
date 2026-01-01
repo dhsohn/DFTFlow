@@ -407,6 +407,11 @@ python -m pytest tests
 - `ase_opt.traj` 또는 `ts_opt.traj`: ASE trajectory (옵티마이저 설정에 따라)
 - `frequency_result.json`: 프리퀀시 결과(실행한 경우)
 - `irc_result.json`: IRC 결과(IRC 모드 또는 IRC 후속 계산 실행 시)
+- `irc_profile.csv`: IRC 경로 에너지 프로파일 CSV
+  - `direction`: forward/reverse 방향
+  - `step`: 스텝 인덱스
+  - `energy_ev`: 에너지(eV)
+  - `energy_hartree`: 에너지(Hartree)
 - `irc_forward.xyz`, `irc_reverse.xyz`: IRC 경로 구조(ASE 출력)
 - `scan_result.json`: 스캔 결과(JSON, 스캔 모드에서 생성)
 - `scan_result.csv`: 스캔 결과 CSV(스캔 모드에서 생성)
@@ -448,6 +453,7 @@ python -m pytest tests
 ### IRC 관련
 - `irc_enabled`: `true|false` (최적화 모드에서 IRC 후속 계산을 강제)
 - `irc_file`: IRC 결과 파일 경로(기본값: `irc_result.json`)
+- `irc_profile_csv_file`: IRC 프로파일 CSV 경로(기본값: `irc_profile.csv`)
 - `irc.steps`, `irc.step_size`, `irc.force_threshold`: IRC 경로 추적 설정
 
 ### 열화학(thermochemistry) 관련

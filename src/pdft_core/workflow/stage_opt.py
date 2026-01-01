@@ -243,6 +243,7 @@ def run_optimization_stage(
         "optimized_xyz_file": optimized_xyz_path,
         "frequency_file": frequency_output_path,
         "irc_file": irc_output_path,
+        "irc_profile_csv_file": context["irc_profile_csv_path"],
         "run_metadata_file": run_metadata_path,
         "config_file": args.config,
         "config": context["config_dict"],

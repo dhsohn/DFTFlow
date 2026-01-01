@@ -1,3 +1,4 @@
+import csv
 import json
 import logging
 import time
@@ -44,9 +45,27 @@ def run_irc_stage(stage_context, queue_update_fn):
             "force_threshold": stage_context["irc_force_threshold"],
             "mode_eigenvalue": stage_context.get("mode_eigenvalue"),
             "profile": irc_result.get("profile", []),
+            "profile_csv_file": stage_context["irc_profile_csv_path"],
         }
         with open(stage_context["irc_output_path"], "w", encoding="utf-8") as handle:
             json.dump(irc_payload, handle, indent=2)
+        with open(
+            stage_context["irc_profile_csv_path"], "w", encoding="utf-8", newline=""
+        ) as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=["direction", "step", "energy_ev", "energy_hartree"],
+            )
+            writer.writeheader()
+            for entry in irc_payload["profile"]:
+                writer.writerow(
+                    {
+                        "direction": entry.get("direction"),
+                        "step": entry.get("step"),
+                        "energy_ev": entry.get("energy_ev"),
+                        "energy_hartree": entry.get("energy_hartree"),
+                    }
+                )
         calculation_metadata["irc"] = irc_payload
         energy_summary = None
         if irc_payload["profile"]:
