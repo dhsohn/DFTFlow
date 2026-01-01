@@ -562,7 +562,8 @@ def prepare_run_context(args, config: RunConfig, config_raw):
     thread_count = config.threads if config.threads is not None else DEFAULT_THREAD_COUNT
     memory_gb = config.memory_gb
     verbose = bool(config.verbose)
-    run_dir = args.run_dir or create_run_directory()
+    resume_dir = getattr(args, "resume", None)
+    run_dir = args.run_dir or resume_dir or create_run_directory()
     os.makedirs(run_dir, exist_ok=True)
     log_path = resolve_run_path(run_dir, config.log_file or DEFAULT_LOG_PATH)
     log_path = format_log_path(log_path)
@@ -591,6 +592,23 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         with open(config_used_path, "w", encoding="utf-8") as config_used_file:
             config_used_file.write(config_raw)
         args.config = config_used_path
+
+    if not resume_dir:
+        checkpoint_path = resolve_run_path(run_dir, "checkpoint.json")
+        ensure_parent_dir(checkpoint_path)
+        checkpoint_payload = {
+            "created_at": datetime.now().isoformat(),
+            "run_dir": run_dir,
+            "run_id": args.run_id,
+            "xyz_file": os.path.abspath(args.xyz_file) if args.xyz_file else None,
+            "config_source_path": str(args.config) if args.config else None,
+            "config_raw": config_raw,
+        }
+        try:
+            with open(checkpoint_path, "w", encoding="utf-8") as checkpoint_file:
+                json.dump(checkpoint_payload, checkpoint_file, indent=2, ensure_ascii=False)
+        except OSError as exc:
+            logging.warning("Failed to write checkpoint.json: %s", exc)
 
     run_id = args.run_id or str(uuid.uuid4())
     event_log_path = resolve_run_path(
@@ -635,6 +653,7 @@ def prepare_run_context(args, config: RunConfig, config_raw):
         "run_id": run_id,
         "irc_enabled": irc_enabled,
         "irc_config": irc_config,
+        "previous_status": getattr(args, "resume_previous_status", None),
     }
 
 
@@ -677,7 +696,7 @@ def _enqueue_background_run(args, context):
         context["run_id"],
         context["run_dir"],
         "queued",
-        previous_status=None,
+        previous_status=context.get("previous_status"),
         details={
             "priority": queue_priority,
             "max_runtime_seconds": max_runtime_seconds,
@@ -1189,7 +1208,7 @@ def run_scan_stage(
         run_id,
         run_dir,
         "running",
-        previous_status=None,
+        previous_status=context.get("previous_status"),
     )
 
     mol = molecule_context["mol"]
@@ -1575,7 +1594,7 @@ def run_optimization_stage(
         run_id,
         run_dir,
         "running",
-        previous_status=None,
+        previous_status=context.get("previous_status"),
     )
 
     last_metadata_write = {

@@ -68,13 +68,26 @@ def build_parser():
         action="store_true",
         help="Launch in the background queue (optional).",
     )
-    parser.add_argument(
+    run_dir_group = parser.add_mutually_exclusive_group()
+    run_dir_group.add_argument(
         "--run-dir",
         help="Optional run directory to use (useful for background launches).",
+    )
+    run_dir_group.add_argument(
+        "--resume",
+        help=(
+            "Resume from an existing run directory (loads checkpoint.json and "
+            "config_used.json). Requires --force-resume for completed/failed runs."
+        ),
     )
     parser.add_argument(
         "--run-id",
         help="Optional run ID to use (useful for background launches).",
+    )
+    parser.add_argument(
+        "--force-resume",
+        action="store_true",
+        help="Allow resuming runs marked as completed/failed/timeout/canceled.",
     )
     parser.add_argument(
         "--validate-only",

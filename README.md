@@ -199,6 +199,21 @@ TS 최적화를 위해서는 `run_config.json`에서 아래 값을 `transition_s
 ```bash
 python run_opt.py input_ts.xyz --config run_config.json --non-interactive
 ```
+
+### 3) 재시작(resume)
+기존 실행 디렉터리(`runs/...`)를 이어서 계산하려면 `--resume`을 사용합니다.  
+이때 run 디렉터리의 `checkpoint.json`과 `config_used.json`을 읽어 입력/설정을 복구합니다.
+
+```bash
+python run_opt.py --resume runs/2024-01-01_120000
+```
+
+- `--resume`는 `--run-dir`과 동시에 사용할 수 없습니다.
+- `completed/failed/timeout/canceled` 상태의 run 디렉터리를 재시작하려면 명시적으로 `--force-resume`를 지정해야 합니다.
+
+```bash
+python run_opt.py --resume runs/2024-01-01_120000 --force-resume
+```
 ```json
 {
   "calculation_mode": "irc",
