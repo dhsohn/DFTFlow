@@ -555,6 +555,27 @@ def _prune_queue_entries(queue_path, lock_path, keep_days, statuses):
     return removed_count, remaining_count
 
 
+def _archive_queue(queue_path, lock_path, archive_path=None):
+    _ensure_queue_file(queue_path)
+    with _queue_lock(lock_path):
+        queue_state = _load_queue(queue_path)
+        entries = queue_state.get("entries") or []
+        timestamp = datetime.now()
+        if not archive_path:
+            archive_path = (
+                f"{queue_path}.{timestamp.strftime('%Y%m%d%H%M%S')}.archive.json"
+            )
+        archive_state = {
+            "entries": entries,
+            "archived_at": timestamp.isoformat(),
+            "queue_updated_at": queue_state.get("updated_at"),
+        }
+        _write_queue(archive_path, archive_state)
+        queue_state["entries"] = []
+        _write_queue(queue_path, queue_state)
+    return archive_path
+
+
 def _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
     ensure_parent_dir(queue_path)
     try:
@@ -873,6 +894,10 @@ def prune_queue_entries(queue_path, lock_path, keep_days, statuses):
     return _prune_queue_entries(queue_path, lock_path, keep_days, statuses)
 
 
+def archive_queue(queue_path, lock_path, archive_path=None):
+    return _archive_queue(queue_path, lock_path, archive_path=archive_path)
+
+
 def format_queue_status(queue_state):
     return _format_queue_status(queue_state)
 
@@ -916,6 +941,7 @@ def load_queue(queue_path=DEFAULT_QUEUE_PATH):
 
 __all__ = [
     "cancel_queue_entry",
+    "archive_queue",
     "ensure_queue_file",
     "ensure_queue_runner_started",
     "enqueue_run",

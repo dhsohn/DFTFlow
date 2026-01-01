@@ -209,6 +209,15 @@ def main():
                 )
                 print(f"Pruned queue entries: {removed} removed, {remaining} remaining.")
                 return
+            if args.queue_command == "archive":
+                queue.ensure_queue_file(DEFAULT_QUEUE_PATH)
+                archive_path = queue.archive_queue(
+                    DEFAULT_QUEUE_PATH,
+                    DEFAULT_QUEUE_LOCK_PATH,
+                    args.path,
+                )
+                print(f"Archived queue entries to: {archive_path}")
+                return
 
         if args.command == "status":
             if args.recent and args.run_path:

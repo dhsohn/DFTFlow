@@ -290,6 +290,16 @@ def build_parser():
         default=30,
         help="Keep queue entries newer than N days (default: 30).",
     )
+    queue_archive_parser = queue_subparsers.add_parser(
+        "archive", help="Archive queue entries and reset the queue."
+    )
+    queue_archive_parser.add_argument(
+        "--path",
+        help=(
+            "Optional archive output path (default: "
+            "queue.json.YYYYMMDDHHMMSS.archive.json)."
+        ),
+    )
     return parser
 
 
