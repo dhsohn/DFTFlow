@@ -61,12 +61,42 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 
 > 참고: XC 함수 자체에 dispersion이 포함된 것으로 판단되면(예: 이름이 `...-d`, `...d3` 등으로 끝나는 경우) 별도 D3/D4 설정을 무시하도록 되어 있습니다.
 
-### 4) 입력 XYZ의 charge / multiplicity 처리
+### 4) 스캔(1D/2D) 계산 **(신규 기능)**
+구조의 특정 결합/각/이면각을 **그리드 스캔**하며 각 점에서 최적화 또는 단일점 계산을 수행합니다.
+
+- **지원 차원**: 1D/2D 스캔
+- **지원 타입**: `bond`, `angle`, `dihedral`
+- **실행 모드**: `optimization` 또는 `single_point`
+- **입력 방식**: `--scan-dimension`, `--scan-grid`, `--scan-mode`로 CLI에서 간단히 지정
+- **결과물**: 스캔 포인트별 결과가 run 디렉터리 하위에 정리됩니다.
+
+예: 1D bond 스캔(0-1 결합 길이)
+```bash
+python run_opt.py input.xyz \
+  --config run_config.json \
+  --non-interactive \
+  --scan-dimension "bond,0,1,1.0,2.0,0.1" \
+  --scan-mode optimization
+```
+
+예: 2D 스캔 + 커스텀 그리드
+```bash
+python run_opt.py input.xyz \
+  --config run_config.json \
+  --non-interactive \
+  --scan-dimension "bond,0,1,1.0,2.0,0.1" \
+  --scan-dimension "angle,0,1,2,90,130,5" \
+  --scan-grid "1.0,1.2,1.4,1.6,1.8,2.0" \
+  --scan-grid "90,100,110,120,130" \
+  --scan-mode single_point
+```
+
+### 5) 입력 XYZ의 charge / multiplicity 처리
 - `.xyz`의 **2번째 줄(comment line)** 에 아래처럼 메타데이터를 넣을 수 있습니다.
   - 예: `charge=0 multiplicity=1`
 - 지정하지 않으면 전자수 parity로 spin을 자동 추정하며, 라디칼/TS/금속/diradical에서는 오상태 위험이 있어 경고가 출력됩니다.
 
-### 5) 백그라운드 큐 & 상태/진단 유틸리티
+### 6) 백그라운드 큐 & 상태/진단 유틸리티
 - `--background`로 큐에 넣어 **백그라운드 실행** 가능 (우선순위/타임아웃 지원)
 - `--queue-status`, `--queue-cancel`, `--queue-retry` 등으로 **큐 상태 관리**
 - `--status`, `--status-recent`로 **실행 결과 요약 출력**
@@ -200,6 +230,17 @@ TS 최적화를 위해서는 `run_config.json`에서 아래 값을 `transition_s
 python run_opt.py input_ts.xyz --config run_config.json --non-interactive
 ```
 
+### 2-1) 스캔 계산(비-인터랙티브 전용)
+스캔 계산은 CLI 옵션으로만 지정하며, **인터랙티브 모드에서는 사용할 수 없습니다.**
+
+```bash
+python run_opt.py input.xyz \
+  --config run_config.json \
+  --non-interactive \
+  --scan-dimension "dihedral,0,1,2,3,0,180,15" \
+  --scan-mode single_point
+```
+
 ### 3) 재시작(resume)
 기존 실행 디렉터리(`runs/...`)를 이어서 계산하려면 `--resume`을 사용합니다.  
 이때 run 디렉터리의 `checkpoint.json`과 `config_used.json`을 읽어 입력/설정을 복구합니다.
@@ -234,6 +275,7 @@ python run_opt.py --resume runs/2024-01-01_120000 --force-resume
 - `--status <run_dir|metadata.json>`: 특정 실행의 상태 요약 출력
 - `--status-recent <N>`: 최근 N개 실행 요약 출력
 - `--doctor`: 환경 진단(의존성/solvent map 등) 후 종료
+- `--scan-dimension`, `--scan-grid`, `--scan-mode`: 스캔 계산 전용 옵션
 
 ---
 
@@ -272,6 +314,45 @@ python run_opt.py --doctor
 python run_opt.py --validate-only --config run_config.json
 python run_opt.py validate-config run_config.json
 ```
+
+---
+
+## 내장 기능 상세(명령 옵션 가이드)
+
+### 실행 모드/입력
+- `--interactive`: 대화형 입력(기본). 설정을 선택하면서 진행합니다.
+- `--non-interactive` (`--advanced`): JSON/XYZ를 명시해 배치 실행합니다.
+- `--config <path>`: 사용할 JSON 설정 파일 경로.
+- `--solvent-map <path>`: 용매 유전율 맵(JSON) 경로.
+
+### 실행 제어/복구
+- `--run-dir <dir>`: 결과를 기록할 디렉터리를 지정합니다.
+- `--run-id <uuid>`: run id를 고정합니다(대기열/재현성 관리에 유용).
+- `--resume <dir>`: 기존 run 디렉터리에서 재개합니다.
+- `--force-resume`: 완료/실패/타임아웃 run도 재개 허용합니다.
+
+### 상태/진단
+- `--status <run_dir|metadata.json>`: 특정 실행 요약 출력.
+- `--status-recent <N>`: 최근 N개 실행 요약 출력.
+- `--doctor`: 의존성/환경 점검(설치 누락, solvent map 등).
+- `--validate-only`: 설정 파일만 검증하고 종료합니다.
+
+### 백그라운드 큐
+- `--background`: 큐에 등록해 백그라운드 실행.
+- `--queue-status`: 큐/실행 상태를 요약 출력.
+- `--queue-cancel <RUN_ID>`: 대기열 항목 취소.
+- `--queue-retry <RUN_ID>`: 실패/타임아웃 항목 재시도.
+- `--queue-requeue-failed`: 실패/타임아웃 항목 일괄 재등록.
+- `--queue-priority <int>`: 우선순위(높을수록 먼저 실행).
+- `--queue-max-runtime <sec>`: 최대 실행 시간(초).
+
+### 스캔 옵션(비-인터랙티브 전용)
+- `--scan-dimension "type,i,j[,k[,l]],start,end,step"`  
+  - `type`: `bond`(2개 인덱스), `angle`(3개), `dihedral`(4개)  
+  - `start/end/step`: 스캔 범위/간격  
+  - 2D 스캔 시 `--scan-dimension`을 **2번** 지정합니다.
+- `--scan-grid "v1,v2,..."`: 차원별 **명시적 그리드** 지정(차원 수만큼 반복 입력).
+- `--scan-mode`: 각 점에서 수행할 계산 모드(`optimization` 또는 `single_point`).
 
 ---
 
