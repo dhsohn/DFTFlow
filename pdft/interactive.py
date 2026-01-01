@@ -100,19 +100,42 @@ def _prompt_interactive_config(args):
 
     if not args.xyz_file:
         input_dir = os.path.join(os.path.dirname(__file__), "input")
-        input_xyz_files = sorted(
-            filename
-            for filename in os.listdir(input_dir)
-            if filename.lower().endswith(".xyz")
-            and os.path.isfile(os.path.join(input_dir, filename))
-        )
-        if not input_xyz_files:
-            raise ValueError("input 디렉토리에 .xyz 파일이 없습니다.")
-        selected_xyz = _prompt_choice(
-            "인풋 파일을 선택하세요 (.xyz):",
-            input_xyz_files,
-        )
-        args.xyz_file = os.path.join(input_dir, selected_xyz)
+        input_dir_path = Path(input_dir)
+        fallback_input_dir = _SCRIPT_DIR.parent / "input"
+        candidate_dirs = []
+        if input_dir_path.is_dir():
+            candidate_dirs.append(input_dir_path)
+        if fallback_input_dir.is_dir() and fallback_input_dir != input_dir_path:
+            candidate_dirs.append(fallback_input_dir)
+
+        selected_xyz = None
+        selected_dir = None
+        for candidate_dir in candidate_dirs:
+            input_xyz_files = sorted(
+                entry.name
+                for entry in candidate_dir.iterdir()
+                if entry.is_file() and entry.suffix.lower() == ".xyz"
+            )
+            if input_xyz_files:
+                selected_xyz = _prompt_choice(
+                    "인풋 파일을 선택하세요 (.xyz):",
+                    input_xyz_files,
+                )
+                selected_dir = candidate_dir
+                break
+
+        if not selected_xyz or not selected_dir:
+            expected_paths = ", ".join(
+                [
+                    str(_SCRIPT_DIR / "assets" / "input"),
+                    str(input_dir_path),
+                    str(fallback_input_dir),
+                ]
+            )
+            raise ValueError(
+                f".xyz 파일을 찾을 수 없습니다. 예상 위치: {expected_paths}"
+            )
+        args.xyz_file = str(selected_dir / selected_xyz)
 
     basis = _prompt_choice(
         "basis set을 선택하세요:",
