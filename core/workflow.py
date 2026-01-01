@@ -18,7 +18,7 @@ from .queue import (
     register_foreground_run,
     update_queue_status,
 )
-from .run_opt_chemistry import (
+from .run_opt_engine import (
     apply_scf_settings,
     apply_solvent_model,
     compute_frequencies,

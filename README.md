@@ -15,7 +15,7 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 ### 실행 흐름(요약)
 1. **입력/설정 로딩**: `core/run_opt.py`가 CLI 인자를 해석하고, `core/run_opt_config.py`에서 JSON 설정을 로드/검증합니다.
 2. **구조/전하/스핀 준비**: XYZ 파일과 메타데이터를 읽고, `charge`/`multiplicity`가 없으면 전자수 기반으로 추정합니다.
-3. **화학 계산 엔진 구성**: `run_opt_chemistry.py`가 PySCF 설정(기저, 함수, SCF 옵션, 용매 모델 등)을 적용합니다.
+3. **화학 계산 엔진 구성**: `run_opt_engine.py`가 PySCF 설정(기저, 함수, SCF 옵션, 용매 모델 등)을 적용합니다.
 4. **옵티마이저 선택/구동**:
    - 최소점: ASE(BFGS 등) + PySCF 그라디언트
    - TS: Sella 기반 1차 안장점 탐색(`order=1`)
@@ -78,7 +78,7 @@ pDFT/
   core/
     __init__.py
     run_opt.py               # 메인 CLI/워크플로우
-    run_opt_chemistry.py      # PySCF 기반 SP/frequency/solvent 등 화학 로직
+    run_opt_engine.py         # PySCF 기반 SP/frequency/solvent 등 화학 로직
     run_opt_dispersion.py     # D3/D4 파싱 및 백엔드 매핑(통합)
     run_opt_config.py         # config 로딩/검증
     run_opt_logging.py        # 로깅/이벤트 로깅
