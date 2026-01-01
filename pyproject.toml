@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 dependencies = ["jsonschema>=4.18"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
 pdft = "pdft_core.run_opt:main"
@@ -37,3 +37,9 @@ docstring-code-line-length = 100
 testpaths = ["tests"]
 norecursedirs = ["pyscf"]
 pythonpath = ["src"]
+
+[tool.mypy]
+mypy_path = "src"
+python_version = "3.12"
+warn_unused_ignores = true
+disallow_untyped_defs = false
