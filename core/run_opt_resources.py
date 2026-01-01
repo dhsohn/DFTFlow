@@ -5,6 +5,57 @@ import platform
 import sys
 from datetime import datetime
 
+THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "BLIS_NUM_THREADS",
+)
+
+
+def _evaluate_openmp_availability(requested_threads, effective_threads):
+    if not isinstance(effective_threads, int) or not requested_threads:
+        return None
+    if requested_threads > 1 and effective_threads == 1:
+        return False
+    return True
+
+
+def inspect_thread_settings(requested_threads=None):
+    environment = {env_name: os.environ.get(env_name) for env_name in THREAD_ENV_VARS}
+    inferred_request = requested_threads
+    if inferred_request is None:
+        for env_value in environment.values():
+            if not env_value:
+                continue
+            try:
+                inferred_request = int(env_value)
+            except ValueError:
+                continue
+            else:
+                break
+    status = {
+        "requested": inferred_request,
+        "effective_threads": None,
+        "openmp_available": None,
+        "environment": environment,
+    }
+    pyscf_lib_spec = importlib.util.find_spec("pyscf.lib")
+    if pyscf_lib_spec is None:
+        return status
+    pyscf_lib = importlib.import_module("pyscf.lib")
+    if not hasattr(pyscf_lib, "num_threads"):
+        return status
+    effective_threads = pyscf_lib.num_threads()
+    status["effective_threads"] = effective_threads
+    status["openmp_available"] = _evaluate_openmp_availability(
+        inferred_request,
+        effective_threads,
+    )
+    return status
+
 
 def apply_thread_settings(thread_count):
     status = {
@@ -15,14 +66,7 @@ def apply_thread_settings(thread_count):
     if not thread_count:
         return status
     thread_value = str(thread_count)
-    for env_name in (
-        "OMP_NUM_THREADS",
-        "MKL_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS",
-        "NUMEXPR_NUM_THREADS",
-        "VECLIB_MAXIMUM_THREADS",
-        "BLIS_NUM_THREADS",
-    ):
+    for env_name in THREAD_ENV_VARS:
         os.environ[env_name] = thread_value
     pyscf_lib_spec = importlib.util.find_spec("pyscf.lib")
     if pyscf_lib_spec is None:
@@ -33,11 +77,10 @@ def apply_thread_settings(thread_count):
     pyscf_lib.num_threads(thread_count)
     effective_threads = pyscf_lib.num_threads()
     status["effective_threads"] = effective_threads
-    if isinstance(effective_threads, int):
-        if thread_count > 1 and effective_threads == 1:
-            status["openmp_available"] = False
-        else:
-            status["openmp_available"] = True
+    status["openmp_available"] = _evaluate_openmp_availability(
+        thread_count,
+        effective_threads,
+    )
     return status
 
 

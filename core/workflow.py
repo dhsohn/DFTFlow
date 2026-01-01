@@ -68,6 +68,7 @@ from .run_opt_resources import (
     create_run_directory,
     ensure_parent_dir,
     format_log_path,
+    inspect_thread_settings,
     resolve_run_path,
 )
 
@@ -531,6 +532,14 @@ def run_doctor():
     ]
     for module_name, hint, *label in checks:
         _check_import(module_name, hint, label[0] if label else None)
+
+    thread_status = inspect_thread_settings()
+    print("INFO thread environment settings:")
+    for env_name, env_value in thread_status["environment"].items():
+        print(f"  {env_name}={env_value}")
+    print(f"INFO requested thread count = {thread_status['requested']}")
+    print(f"INFO pyscf.lib.num_threads() = {thread_status['effective_threads']}")
+    print(f"INFO openmp_available = {thread_status['openmp_available']}")
 
     if failures:
         print(f"FAIL {len(failures)} checks failed: {', '.join(failures)}")
