@@ -14,7 +14,10 @@ dependencies = ["jsonschema>=4.18"]
 dev = ["pytest", "ruff"]
 
 [tool.setuptools]
-packages = ["core"]
+packages = ["core", "core.assets"]
+
+[tool.setuptools.package-data]
+"core.assets" = ["*.json", "input/*.xyz"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B"]

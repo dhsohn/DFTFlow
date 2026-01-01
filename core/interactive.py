@@ -47,6 +47,16 @@ def _resolve_interactive_config_path(filename: str) -> Path | None:
     return None
 
 
+def _resolve_interactive_input_dir():
+    asset_dir = _ASSET_ROOT / "input"
+    if asset_dir.is_dir():
+        return asset_dir
+    fallback_dir = _REPO_ROOT / "input"
+    if fallback_dir.is_dir():
+        return fallback_dir
+    return None
+
+
 def _prompt_choice(prompt, options, allow_custom=False, default_value=None):
     normalized_options = list(dict.fromkeys(options))
     if default_value and default_value not in normalized_options:
@@ -125,12 +135,13 @@ def _prompt_interactive_config(args):
         raise ValueError(f"Failed to load base config from {base_config_path}.")
 
     if not args.xyz_file:
-        input_dir = os.path.join(os.path.dirname(__file__), "input")
+        input_dir = _resolve_interactive_input_dir()
+        if input_dir is None:
+            raise ValueError("input 디렉토리를 찾을 수 없습니다.")
         input_xyz_files = sorted(
-            filename
-            for filename in os.listdir(input_dir)
-            if filename.lower().endswith(".xyz")
-            and os.path.isfile(os.path.join(input_dir, filename))
+            entry.name
+            for entry in input_dir.iterdir()
+            if entry.is_file() and entry.name.lower().endswith(".xyz")
         )
         if not input_xyz_files:
             raise ValueError("input 디렉토리에 .xyz 파일이 없습니다.")
@@ -138,7 +149,7 @@ def _prompt_interactive_config(args):
             "인풋 파일을 선택하세요 (.xyz):",
             input_xyz_files,
         )
-        args.xyz_file = os.path.join(input_dir, selected_xyz)
+        args.xyz_file = str(input_dir.joinpath(selected_xyz))
 
     basis = _prompt_choice(
         "basis set을 선택하세요:",

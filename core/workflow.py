@@ -9,6 +9,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime
+from importlib import resources
 
 from .ase_backend import _run_ase_optimizer
 from .queue import (
@@ -215,6 +216,18 @@ def _normalize_calculation_mode(mode_value):
     )
 
 
+def _resolve_solvent_map_path(map_path):
+    if not map_path:
+        map_path = DEFAULT_SOLVENT_MAP_PATH
+    if os.path.isfile(map_path):
+        return map_path
+    if os.path.basename(str(map_path)) == DEFAULT_SOLVENT_MAP_PATH:
+        asset_path = resources.files("core.assets").joinpath(DEFAULT_SOLVENT_MAP_PATH)
+        if asset_path.is_file():
+            return str(asset_path)
+    return map_path
+
+
 def run_doctor():
     def format_doctor_result(label, status, remedy=None):
         status_label = "OK" if status else "FAIL"
@@ -248,8 +261,9 @@ def run_doctor():
             return "Invalid JSON in solvent map. Fix the JSON syntax."
         return "Unable to read solvent map. Check file permissions and path."
 
+    solvent_map_path = _resolve_solvent_map_path(DEFAULT_SOLVENT_MAP_PATH)
     try:
-        load_solvent_map(DEFAULT_SOLVENT_MAP_PATH)
+        load_solvent_map(solvent_map_path)
         _record_check("solvent_map", True)
     except Exception as exc:
         _record_check("solvent_map", False, _solvent_map_hint(exc))
@@ -287,7 +301,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
         optimizer_mode = _normalize_optimizer_mode(
             optimizer_config.mode if optimizer_config else None
         )
-    solvent_map_path = config.solvent_map or DEFAULT_SOLVENT_MAP_PATH
+    solvent_map_path = _resolve_solvent_map_path(config.solvent_map)
     single_point_config = config.single_point
     frequency_enabled = config.frequency_enabled
     single_point_enabled = config.single_point_enabled
@@ -595,7 +609,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             sp_dispersion_model = single_point_config.dispersion
         else:
             sp_dispersion_model = dispersion_model
-        sp_solvent_map_path = (
+        sp_solvent_map_path = _resolve_solvent_map_path(
             single_point_config.solvent_map
             if single_point_config and single_point_config.solvent_map
             else solvent_map_path

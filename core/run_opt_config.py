@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from importlib import resources
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -305,11 +306,20 @@ def load_run_config(config_path):
 def load_solvent_map(map_path):
     if not map_path:
         return {}
-    with open(map_path, "r", encoding="utf-8") as map_file:
-        try:
-            return json.load(map_file)
-        except json.JSONDecodeError as error:
-            raise ValueError(_format_json_decode_error(map_path, error)) from error
+    if os.path.isfile(map_path):
+        with open(map_path, "r", encoding="utf-8") as map_file:
+            try:
+                return json.load(map_file)
+            except json.JSONDecodeError as error:
+                raise ValueError(_format_json_decode_error(map_path, error)) from error
+    if os.path.basename(str(map_path)) == DEFAULT_SOLVENT_MAP_PATH:
+        asset_path = resources.files("core.assets").joinpath(DEFAULT_SOLVENT_MAP_PATH)
+        if asset_path.is_file():
+            try:
+                return json.loads(asset_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as error:
+                raise ValueError(_format_json_decode_error(map_path, error)) from error
+    raise FileNotFoundError(f"Solvent map file not found: '{map_path}'.")
 
 
 def _format_json_decode_error(path, error):
