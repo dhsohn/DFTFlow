@@ -108,7 +108,8 @@ conda install -c conda-forge \
   openblas gcc clang llvm-openmp \
   libxc xcfun libcint toml \
   h5py scipy numpy compilers \
-  ase dftd3-python dftd4
+  ase dftd3-python dftd4 \
+  -y
 
 python -m pip install sella pytest jsonschema
 ```
