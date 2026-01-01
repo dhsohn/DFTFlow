@@ -8,7 +8,7 @@ from .run_opt_config import DEFAULT_SOLVENT_MAP_PATH, load_run_config, load_solv
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_ASSET_ROOT = resources.files("pdft.assets")
+_ASSET_ROOT = resources.files("core.assets")
 INTERACTIVE_CONFIG_MINIMUM = _ASSET_ROOT / "run_config_ase.json"
 INTERACTIVE_CONFIG_TS = _ASSET_ROOT / "run_config_ts.json"
 BASIS_SET_OPTIONS = [
