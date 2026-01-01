@@ -733,7 +733,9 @@ def load_run_config(config_path):
         raise FileNotFoundError(message)
     with open(config_path, "r", encoding="utf-8") as config_file:
         raw_config = config_file.read()
-        config, raw_config = _parse_config_contents(config_path, raw_config)
+        config, raw_config = _parse_config_contents(
+            config_path, raw_config, file_label="config"
+        )
     if not isinstance(config, dict):
         raise ValueError("Config must be an object/mapping.")
     return config, raw_config
@@ -787,7 +789,12 @@ def load_solvent_map_from_resource():
 def _load_solvent_map_from_resolved(resolved):
     with _open_solvent_map(resolved) as map_file:
         raw_map = map_file.read()
-    map_data, _ = _parse_config_contents(str(resolved), raw_map, expect_raw_json=False)
+    map_data, _ = _parse_config_contents(
+        str(resolved),
+        raw_map,
+        expect_raw_json=False,
+        file_label="solvent map",
+    )
     if not isinstance(map_data, dict):
         raise ValueError("Solvent map must be an object/mapping.")
     return map_data
@@ -799,7 +806,15 @@ def _open_solvent_map(resolved):
     return open(resolved, "r", encoding="utf-8")
 
 
-def _format_json_decode_error(path, error):
+SUPPORTED_CONFIG_FORMATS = ".json/.yaml/.toml"
+
+
+def _format_parse_error_prefix(path, file_label):
+    label = f"{file_label} file" if file_label else "file"
+    return f"Failed to parse {label} '{path}' (supported: {SUPPORTED_CONFIG_FORMATS})"
+
+
+def _format_json_decode_error(path, error, file_label):
     location = f"line {error.lineno} column {error.colno}"
     message = error.msg
     if message == "Extra data":
@@ -817,24 +832,27 @@ def _format_json_decode_error(path, error):
             f"common causes: {common_causes}. "
             "More than one JSON object detected in the file."
         )
-    return f"Failed to parse JSON file '{path}' ({location}): {message}"
+    prefix = _format_parse_error_prefix(path, file_label)
+    return f"{prefix} ({location}): {message}"
 
 
-def _format_yaml_decode_error(path, error):
-    return f"Failed to parse YAML file '{path}': {error}"
+def _format_yaml_decode_error(path, error, file_label):
+    prefix = _format_parse_error_prefix(path, file_label)
+    return f"{prefix}: {error}"
 
 
-def _format_toml_decode_error(path, error):
-    return f"Failed to parse TOML file '{path}': {error}"
+def _format_toml_decode_error(path, error, file_label):
+    prefix = _format_parse_error_prefix(path, file_label)
+    return f"{prefix}: {error}"
 
 
-def _parse_config_contents(path, raw_text, expect_raw_json=True):
+def _parse_config_contents(path, raw_text, expect_raw_json=True, file_label="config"):
     extension = os.path.splitext(str(path))[1].lower()
     if extension in (".yaml", ".yml"):
         try:
             config = yaml.safe_load(raw_text)
         except yaml.YAMLError as error:
-            raise ValueError(_format_yaml_decode_error(path, error)) from error
+            raise ValueError(_format_yaml_decode_error(path, error, file_label)) from error
         if expect_raw_json:
             raw_text = json.dumps(config, indent=2, ensure_ascii=False)
         return config, raw_text
@@ -842,14 +860,14 @@ def _parse_config_contents(path, raw_text, expect_raw_json=True):
         try:
             config = tomllib.loads(raw_text)
         except tomllib.TOMLDecodeError as error:
-            raise ValueError(_format_toml_decode_error(path, error)) from error
+            raise ValueError(_format_toml_decode_error(path, error, file_label)) from error
         if expect_raw_json:
             raw_text = json.dumps(config, indent=2, ensure_ascii=False)
         return config, raw_text
     try:
         config = json.loads(raw_text)
     except json.JSONDecodeError as error:
-        raise ValueError(_format_json_decode_error(path, error)) from error
+        raise ValueError(_format_json_decode_error(path, error, file_label)) from error
     return config, raw_text
 
 

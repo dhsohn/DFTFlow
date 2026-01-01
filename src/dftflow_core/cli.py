@@ -132,7 +132,7 @@ def build_parser():
         "--solvent-map",
         default=DEFAULT_SOLVENT_MAP_PATH,
         help=(
-            "Path to JSON file mapping solvent names to dielectric constants "
+            "Path to JSON/YAML/TOML file mapping solvent names to dielectric constants "
             f"(default: {DEFAULT_SOLVENT_MAP_PATH})."
         ),
     )
@@ -140,7 +140,7 @@ def build_parser():
         "--config",
         default=DEFAULT_CONFIG_PATH,
         help=(
-            "Path to JSON config file for runtime settings "
+            "Path to JSON/YAML/TOML config file for runtime settings "
             f"(default: {DEFAULT_CONFIG_PATH})."
         ),
     )
