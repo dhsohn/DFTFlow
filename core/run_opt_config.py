@@ -24,10 +24,13 @@ DEFAULT_QUEUE_RUNNER_LOG_PATH = "log/queue_runner.log"
 
 RUN_CONFIG_SCHEMA = {
     "type": "object",
-    "required": ["threads", "memory_gb", "basis", "xc", "solvent"],
+    "required": ["basis", "xc", "solvent"],
     "properties": {
-        "threads": {"type": "integer", "minimum": 1},
-        "memory_gb": {"type": ["number", "integer"], "exclusiveMinimum": 0},
+        "threads": {"type": ["integer", "null"], "minimum": 1},
+        "memory_gb": {
+            "type": ["number", "integer", "null"],
+            "exclusiveMinimum": 0,
+        },
         "basis": {"type": "string", "minLength": 1},
         "xc": {"type": "string", "minLength": 1},
         "solvent": {"type": "string", "minLength": 1},
