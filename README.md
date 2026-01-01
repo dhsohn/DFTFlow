@@ -40,6 +40,27 @@ PySCF(DFT/SCF/gradient/Hessian)와 ASE(최적화 드라이버)를 결합해 **�
 
 ---
 
+## QCSchema 단위/프로비넌스 매핑 규칙
+
+- **단위**
+  - QCSchema `return_result`, `properties.return_energy`, `properties.scf_total_energy`는 **Hartree** 기준으로 기록합니다.
+  - ASE 기반 IRC 프로파일에서 발생하는 에너지(`energy_ev`)는 **Hartree로 변환**해 QCSchema에 기록합니다.
+  - 좌표는 입력/출력 모두 Angstrom을 사용합니다.
+- **프로퍼티 매핑**
+  - `return_result`는 SP 결과 → frequency 결과 → 메타데이터 요약(`summary.final_energy`) 순서로 선택합니다.
+  - `properties.return_energy`, `properties.scf_total_energy`는 `return_result`와 동일한 값을 기록합니다.
+  - `properties.gradient`가 제공될 경우 **Hartree/Bohr** 단위로 기록합니다.
+  - `properties.units`에 에너지/그래디언트 단위를 명시합니다.
+- **모델 정보**
+  - `model.method`/`model.basis`는 최종 SP/프리퀀시 계산 설정이 있으면 해당 값을, 없으면 기본 설정을 사용합니다.
+  - `model.solvent`/`model.solvent_model`/`model.solvent_eps`는 계산에 사용된 용매 설정을 그대로 반영합니다.
+- **프로비넌스**
+  - `creator`는 `pDFT`, `version`은 설치된 `pdft` 패키지 버전을 사용합니다.
+  - `routine`에는 계산 모드, Python 버전, git commit 정보를 기록합니다.
+  - `walltime`은 `summary.elapsed_seconds`, `hostname`은 실행 호스트명을 사용합니다.
+
+---
+
 ## 주요 특징
 
 ### 1) 계산 기능
