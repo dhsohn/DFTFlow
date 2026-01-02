@@ -154,6 +154,9 @@ conda-lock lock -f environment.yml -p linux-64
 ```shell
 conda-lock install --name dftflow conda-lock.yml
 ```
+```shell
+pip install -e .
+```
 
 #### 3) Build PySCF from source
 ```shell
