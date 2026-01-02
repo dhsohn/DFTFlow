@@ -1,4 +1,5 @@
 from run_opt_engine import (
+    apply_density_fit_setting,
     apply_scf_checkpoint,
     apply_scf_settings,
     apply_solvent_model,
@@ -97,9 +98,10 @@ def _build_pyscf_calculator(
             else:
                 mf = dft.UKS(mol)
             mf.xc = xc
+            mf, _ = apply_density_fit_setting(mf, scf_config)
             if solvent_model:
                 mf = apply_solvent_model(mf, solvent_model, solvent_name, solvent_eps)
-            mf, _ = apply_scf_settings(mf, scf_config)
+            mf, _ = apply_scf_settings(mf, scf_config, apply_density_fit=False)
             dm0, chkfile_path = apply_scf_checkpoint(mf, scf_config, run_dir=run_dir)
             if verbose:
                 mf.verbose = 4
