@@ -157,6 +157,9 @@ conda-lock install --name dftflow conda-lock.yml
 ```shell
 pip install -e .
 ```
+```shell
+pip install sella basis-set-exchange
+```
 
 ## How to run
 
