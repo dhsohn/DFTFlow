@@ -132,6 +132,7 @@ def run_irc_stage(stage_context, queue_update_fn):
             previous_status="running",
             queue_update_fn=queue_update_fn,
             exit_code=0,
+            retry_policy=stage_context.get("retry_policy"),
         )
     except Exception as exc:
         logging.exception("IRC calculation failed.")
@@ -147,5 +148,6 @@ def run_irc_stage(stage_context, queue_update_fn):
             exit_code=1,
             details={"error": str(exc)},
             error=exc,
+            retry_policy=stage_context.get("retry_policy"),
         )
         raise

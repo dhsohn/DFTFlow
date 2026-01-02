@@ -343,6 +343,48 @@ def _record_status_event(event_log_path, run_id, run_dir, status, previous_statu
     _append_event_log(event_log_path, payload)
 
 
+def _extract_retry_policy(entry):
+    retry_policy = entry.get("retry_policy")
+    return retry_policy if isinstance(retry_policy, dict) else None
+
+
+def _build_retry_decision(retry_policy, retry_count, queued_at, failure_status, reason):
+    decision = {
+        "action": "requeue",
+        "reason": reason,
+        "failure_status": failure_status,
+        "queued_at": queued_at,
+        "backoff_seconds": None,
+        "next_retry_at": queued_at,
+        "remaining_retries": None,
+    }
+    if not retry_policy:
+        return decision
+    max_retries = retry_policy.get("max_retries")
+    backoff_seconds = retry_policy.get("backoff_seconds")
+    backoff_factor = retry_policy.get("backoff_factor")
+    max_backoff_seconds = retry_policy.get("max_backoff_seconds")
+    delay = None
+    if isinstance(backoff_seconds, (int, float)):
+        delay = float(backoff_seconds)
+        if isinstance(backoff_factor, (int, float)):
+            exponent = max((retry_count or 0) - 1, 0)
+            delay *= backoff_factor ** exponent
+        if isinstance(max_backoff_seconds, (int, float)):
+            delay = min(delay, float(max_backoff_seconds))
+    if delay is not None:
+        try:
+            queued_at_dt = datetime.fromisoformat(queued_at)
+        except (TypeError, ValueError):
+            queued_at_dt = None
+        if queued_at_dt is not None:
+            decision["backoff_seconds"] = delay
+            decision["next_retry_at"] = (queued_at_dt + timedelta(seconds=delay)).isoformat()
+    if isinstance(max_retries, int):
+        decision["remaining_retries"] = max(max_retries - (retry_count or 0), 0)
+    return decision
+
+
 def _cancel_queue_entry(queue_path, lock_path, run_id):
     event_log_path = None
     run_dir = None
@@ -392,9 +434,11 @@ def _requeue_queue_entry(queue_path, lock_path, run_id, reason):
     run_dir = None
     metadata_path = None
     previous_status = None
+    retry_policy = None
+    retry_decision = None
 
     def _apply_requeue(entry):
-        nonlocal event_log_path, run_dir, metadata_path, previous_status
+        nonlocal event_log_path, run_dir, metadata_path, previous_status, retry_policy, retry_decision
         previous_status = entry.get("status")
         entry["status"] = "queued"
         entry["queued_at"] = requeued_at
@@ -406,6 +450,14 @@ def _requeue_queue_entry(queue_path, lock_path, run_id, reason):
         event_log_path = entry.get("event_log_file")
         run_dir = entry.get("run_directory")
         metadata_path = entry.get("run_metadata_file")
+        retry_policy = _extract_retry_policy(entry)
+        retry_decision = _build_retry_decision(
+            retry_policy,
+            entry.get("retry_count"),
+            requeued_at,
+            previous_status,
+            reason,
+        )
 
     updated = _update_queue_entry(queue_path, lock_path, run_id, _apply_requeue)
     if not updated:
@@ -419,6 +471,10 @@ def _requeue_queue_entry(queue_path, lock_path, run_id, reason):
         metadata["run_started_at"] = None
         metadata["run_ended_at"] = None
         metadata["requeued_at"] = requeued_at
+        if retry_policy is not None:
+            metadata["retry_policy"] = retry_policy
+        if retry_decision is not None:
+            metadata["retry_decision"] = retry_decision
         write_run_metadata(metadata_path, metadata)
     _record_status_event(
         event_log_path,
@@ -426,7 +482,12 @@ def _requeue_queue_entry(queue_path, lock_path, run_id, reason):
         run_dir,
         "queued",
         previous_status=previous_status,
-        details={"reason": reason},
+        details={
+            "reason": reason,
+            "failure_status": previous_status,
+            "retry_policy": retry_policy,
+            "retry_decision": retry_decision,
+        },
     )
     return True, None
 
@@ -453,6 +514,14 @@ def _requeue_failed_entries(queue_path, lock_path):
     for item in requeued:
         entry = item["entry"]
         metadata_path = entry.get("run_metadata_file")
+        retry_policy = _extract_retry_policy(entry)
+        retry_decision = _build_retry_decision(
+            retry_policy,
+            entry.get("retry_count"),
+            entry.get("queued_at"),
+            item.get("previous_status"),
+            "requeue_failed",
+        )
         if metadata_path:
             metadata = _load_run_metadata(metadata_path) or {}
             metadata["status"] = "queued"
@@ -460,6 +529,10 @@ def _requeue_failed_entries(queue_path, lock_path):
             metadata["run_started_at"] = None
             metadata["run_ended_at"] = None
             metadata["requeued_at"] = entry.get("requeued_at")
+            if retry_policy is not None:
+                metadata["retry_policy"] = retry_policy
+            if retry_decision is not None:
+                metadata["retry_decision"] = retry_decision
             write_run_metadata(metadata_path, metadata)
         _record_status_event(
             entry.get("event_log_file"),
@@ -467,7 +540,12 @@ def _requeue_failed_entries(queue_path, lock_path):
             entry.get("run_directory"),
             "queued",
             previous_status=item.get("previous_status"),
-            details={"reason": "requeue_failed"},
+            details={
+                "reason": "requeue_failed",
+                "failure_status": item.get("previous_status"),
+                "retry_policy": retry_policy,
+                "retry_decision": retry_decision,
+            },
         )
     return len(requeued)
 

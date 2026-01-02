@@ -77,6 +77,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     single_point_config = config.single_point
     ts_quality_config = config.ts_quality
     thermo_config = config.thermo
+    retry_policy = config.retry_policy.to_dict() if config.retry_policy else None
     frequency_enabled, single_point_enabled = _normalize_stage_flags(
         config, calculation_mode
     )
@@ -201,6 +202,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
         "optimizer_ase_dict": optimizer_ase_dict,
         "optimizer_mode": optimizer_mode,
         "constraints": constraints,
+        "retry_policy": retry_policy,
         "scan_config": scan_config,
         "scan_mode": scan_mode,
         "solvent_map_path": solvent_map_path,

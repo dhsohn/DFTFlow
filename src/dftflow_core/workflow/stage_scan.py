@@ -321,6 +321,7 @@ def run_scan_stage(
             previous_status="running",
             queue_update_fn=queue_update_fn,
             exit_code=0,
+            retry_policy=stage_context.get("retry_policy"),
         )
     except Exception as exc:
         logging.exception("Scan calculation failed.")
@@ -336,5 +337,6 @@ def run_scan_stage(
             exit_code=1,
             details={"error": str(exc)},
             error=exc,
+            retry_policy=stage_context.get("retry_policy"),
         )
         raise

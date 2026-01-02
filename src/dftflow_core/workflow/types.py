@@ -14,6 +14,7 @@ class RunContext(TypedDict):
     optimizer_ase_dict: dict[str, Any]
     optimizer_mode: str | None
     constraints: Any
+    retry_policy: dict[str, Any] | None
     scan_config: dict[str, Any] | None
     scan_mode: str | None
     solvent_map_path: str

@@ -196,6 +196,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                 "priority": args.queue_priority,
                 "max_runtime_seconds": args.queue_max_runtime,
                 "retry_count": 0,
+                "retry_policy": context.get("retry_policy"),
             }
             register_foreground_run(
                 foreground_entry,
@@ -572,6 +573,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     "config": config_dict,
                     "config_raw": config_raw,
                     "config_hash": compute_text_hash(config_raw),
+                    "retry_policy": context.get("retry_policy"),
                     "scf_config": calc_scf_config,
                     "scf_settings": calc_scf_config,
                     "environment": collect_environment_snapshot(thread_count),
@@ -626,6 +628,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     "spin": spin,
                     "optimizer_ase_config": context["optimizer_ase_dict"],
                     "constraints": context["constraints"],
+                    "retry_policy": context.get("retry_policy"),
                 }
                 if calculation_mode == "single_point":
                     run_single_point_stage(stage_context, _update_foreground_queue)

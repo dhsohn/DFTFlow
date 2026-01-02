@@ -31,6 +31,18 @@ DEFAULT_QUEUE_LOCK_PATH = "runs/queue.lock"
 DEFAULT_QUEUE_RUNNER_LOCK_PATH = "runs/queue.runner.lock"
 DEFAULT_QUEUE_RUNNER_LOG_PATH = "log/queue_runner.log"
 
+RETRY_POLICY_SCHEMA = {
+    "type": "object",
+    "required": [],
+    "properties": {
+        "max_retries": {"type": ["integer", "null"], "minimum": 0},
+        "backoff_seconds": {"type": ["number", "integer", "null"], "minimum": 0},
+        "backoff_factor": {"type": ["number", "integer", "null"], "minimum": 0},
+        "max_backoff_seconds": {"type": ["number", "integer", "null"], "minimum": 0},
+    },
+    "additionalProperties": True,
+}
+
 SCAN_DIMENSION_SCHEMA = {
     "type": "object",
     "required": ["type"],
@@ -266,6 +278,9 @@ RUN_CONFIG_SCHEMA = {
             },
             "additionalProperties": False,
         },
+        "retry_policy": {
+            "anyOf": [RETRY_POLICY_SCHEMA, {"type": "null"}],
+        },
         "scan": {
             "type": ["object", "null"],
             "properties": {
@@ -382,6 +397,7 @@ RUN_CONFIG_EXAMPLES = {
         "\"angles\": [{\"i\": 0, \"j\": 1, \"k\": 2, \"angle\": 120.0}], "
         "\"dihedrals\": [{\"i\": 0, \"j\": 1, \"k\": 2, \"l\": 3, \"dihedral\": 180.0}]}"
     ),
+    "retry_policy": "\"retry_policy\": {\"max_retries\": 3, \"backoff_seconds\": 30}",
     "scan": (
         "\"scan\": {\"type\": \"bond\", \"i\": 0, \"j\": 1, \"start\": 1.0, "
         "\"end\": 2.0, \"step\": 0.1, \"mode\": \"optimization\"}"
@@ -625,6 +641,32 @@ class ThermoConfig:
 
 
 @dataclass(frozen=True)
+class RetryPolicyConfig:
+    raw: dict[str, Any]
+    max_retries: int | None = None
+    backoff_seconds: float | None = None
+    backoff_factor: float | None = None
+    max_backoff_seconds: float | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None) -> "RetryPolicyConfig | None":
+        if data is None:
+            return None
+        if not isinstance(data, dict):
+            raise ValueError("Config 'retry_policy' must be an object.")
+        return cls(
+            raw=dict(data),
+            max_retries=data.get("max_retries"),
+            backoff_seconds=data.get("backoff_seconds"),
+            backoff_factor=data.get("backoff_factor"),
+            max_backoff_seconds=data.get("max_backoff_seconds"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.raw)
+
+
+@dataclass(frozen=True)
 class RunConfig:
     raw: dict[str, Any]
     threads: int | None = None
@@ -658,6 +700,7 @@ class RunConfig:
     ts_quality: TSQualityConfig | None = None
     thermo: ThermoConfig | None = None
     constraints: dict[str, Any] | None = None
+    retry_policy: RetryPolicyConfig | None = None
     scan: dict[str, Any] | None = None
     scan2d: dict[str, Any] | None = None
 
@@ -701,6 +744,7 @@ class RunConfig:
             ts_quality=TSQualityConfig.from_dict(data.get("ts_quality")),
             thermo=ThermoConfig.from_dict(data.get("thermo")),
             constraints=data.get("constraints"),
+            retry_policy=RetryPolicyConfig.from_dict(data.get("retry_policy")),
             scan=data.get("scan"),
             scan2d=data.get("scan2d"),
         )

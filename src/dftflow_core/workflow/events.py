@@ -35,6 +35,7 @@ def enqueue_background_run(args, context: RunContext):
         "queued_at": queued_at,
         "priority": queue_priority,
         "max_runtime_seconds": max_runtime_seconds,
+        "retry_policy": context.get("retry_policy"),
     }
     write_run_metadata(context["run_metadata_path"], queued_metadata)
     queue_entry = {
@@ -53,6 +54,7 @@ def enqueue_background_run(args, context: RunContext):
         "priority": queue_priority,
         "max_runtime_seconds": max_runtime_seconds,
         "retry_count": 0,
+        "retry_policy": context.get("retry_policy"),
     }
     position = enqueue_run(queue_entry, DEFAULT_QUEUE_PATH, DEFAULT_QUEUE_LOCK_PATH)
     record_status_event(
@@ -93,7 +95,22 @@ def finalize_metadata(
     exit_code=None,
     details=None,
     error=None,
+    retry_policy=None,
+    retry_decision=None,
 ):
+    if retry_policy is not None:
+        metadata.setdefault("retry_policy", retry_policy)
+    if retry_decision is not None:
+        metadata.setdefault("retry_decision", retry_decision)
+    if status in ("failed", "timeout", "canceled") and "retry_policy" in metadata:
+        metadata.setdefault(
+            "retry_decision",
+            {
+                "action": "manual_review",
+                "next_retry_at": None,
+                "remaining_retries": None,
+            },
+        )
     metadata["status"] = status
     metadata["run_ended_at"] = datetime.now().isoformat()
     metadata["run_updated_at"] = datetime.now().isoformat()

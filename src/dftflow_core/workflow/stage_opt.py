@@ -252,6 +252,7 @@ def run_optimization_stage(
         "config": context["config_dict"],
         "config_raw": context["config_raw"],
         "config_hash": compute_text_hash(context["config_raw"]),
+        "retry_policy": context.get("retry_policy"),
         "scf_config": scf_config,
         "scf_settings": context["applied_scf"],
         "environment": collect_environment_snapshot(thread_count),
@@ -425,6 +426,12 @@ def run_optimization_stage(
             final_sp_cycles=None,
         )
         optimization_metadata["summary"]["memory_limit_enforced"] = memory_limit_enforced
+        if "retry_policy" in optimization_metadata and "retry_decision" not in optimization_metadata:
+            optimization_metadata["retry_decision"] = {
+                "action": "manual_review",
+                "next_retry_at": None,
+                "remaining_retries": None,
+            }
         write_run_metadata(run_metadata_path, optimization_metadata)
         record_status_event(
             event_log_path,
