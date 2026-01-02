@@ -35,7 +35,7 @@ py-modules = [
 ]
 
 [tool.setuptools.package-data]
-"" = ["solvent_dielectric.json"]
+"*" = ["solvent_dielectric.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
