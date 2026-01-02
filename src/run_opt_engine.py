@@ -158,7 +158,43 @@ def total_electron_count(atom_spec, charge):
     return total_charge - charge
 
 
-def apply_scf_settings(mf, scf_config):
+def _apply_density_fit_setting(mf, density_fit):
+    if isinstance(density_fit, bool):
+        if density_fit:
+            if not hasattr(mf, "density_fit"):
+                raise ValueError("Density fitting is not supported for this SCF object.")
+            mf = mf.density_fit()
+    elif isinstance(density_fit, str):
+        if not density_fit.strip():
+            raise ValueError(
+                "Config 'scf.extra.density_fit' must be a boolean or non-empty string."
+            )
+        if not hasattr(mf, "density_fit"):
+            raise ValueError("Density fitting is not supported for this SCF object.")
+        density_fit_key = density_fit.strip().lower()
+        if density_fit_key == "autoaux":
+            import pyscf.df
+
+            mf = mf.density_fit(auxbasis=pyscf.df.autoaux(mf.mol))
+        else:
+            mf = mf.density_fit(auxbasis=density_fit)
+    else:
+        raise ValueError("Config 'scf.extra.density_fit' must be a boolean or a string.")
+    return mf
+
+
+def apply_density_fit_setting(mf, scf_config):
+    if not scf_config:
+        return mf, {}
+    extra = scf_config.get("extra") or {}
+    if "density_fit" not in extra:
+        return mf, {}
+    density_fit = extra.get("density_fit")
+    mf = _apply_density_fit_setting(mf, density_fit)
+    return mf, {"density_fit": density_fit}
+
+
+def apply_scf_settings(mf, scf_config, *, apply_density_fit=True):
     if not scf_config:
         return mf, {}
     applied = {}
@@ -166,30 +202,9 @@ def apply_scf_settings(mf, scf_config):
     applied_extra = {}
     if "density_fit" in extra:
         density_fit = extra.get("density_fit")
-        if isinstance(density_fit, bool):
-            if density_fit:
-                if not hasattr(mf, "density_fit"):
-                    raise ValueError("Density fitting is not supported for this SCF object.")
-                mf = mf.density_fit()
-        elif isinstance(density_fit, str):
-            if not density_fit.strip():
-                raise ValueError(
-                    "Config 'scf.extra.density_fit' must be a boolean or non-empty string."
-                )
-            if not hasattr(mf, "density_fit"):
-                raise ValueError("Density fitting is not supported for this SCF object.")
-            density_fit_key = density_fit.strip().lower()
-            if density_fit_key == "autoaux":
-                import pyscf.df
-
-                mf = mf.density_fit(auxbasis=pyscf.df.autoaux(mf.mol))
-            else:
-                mf = mf.density_fit(auxbasis=density_fit)
-        else:
-            raise ValueError(
-                "Config 'scf.extra.density_fit' must be a boolean or a string."
-            )
-        applied_extra["density_fit"] = density_fit
+        if apply_density_fit:
+            mf = _apply_density_fit_setting(mf, density_fit)
+            applied_extra["density_fit"] = density_fit
     max_cycle = scf_config.get("max_cycle")
     conv_tol = scf_config.get("conv_tol")
     diis = scf_config.get("diis")
@@ -475,6 +490,7 @@ def compute_single_point_energy(
     else:
         mf_sp = dft.UKS(mol_sp)
     mf_sp.xc = xc
+    mf_sp, _ = apply_density_fit_setting(mf_sp, scf_config)
     if solvent_model is not None:
         mf_sp = apply_solvent_model(
             mf_sp,
@@ -484,7 +500,7 @@ def compute_single_point_energy(
         )
     if verbose:
         mf_sp.verbose = 4
-    mf_sp, _ = apply_scf_settings(mf_sp, scf_config)
+    mf_sp, _ = apply_scf_settings(mf_sp, scf_config, apply_density_fit=False)
     dm0, _ = apply_scf_checkpoint(mf_sp, scf_config, run_dir=run_dir)
     if dm0 is not None:
         energy = mf_sp.kernel(dm0=dm0)
@@ -722,6 +738,7 @@ def compute_frequencies(
         mf_freq = dft.UKS(mol_freq)
     mf_freq.xc = xc
     dispersion_info = None
+    mf_freq, _ = apply_density_fit_setting(mf_freq, scf_config)
     if solvent_model is not None:
         mf_freq = apply_solvent_model(
             mf_freq,
@@ -731,7 +748,7 @@ def compute_frequencies(
         )
     if verbose:
         mf_freq.verbose = 4
-    mf_freq, _ = apply_scf_settings(mf_freq, scf_config)
+    mf_freq, _ = apply_scf_settings(mf_freq, scf_config, apply_density_fit=False)
     dm0, _ = apply_scf_checkpoint(mf_freq, scf_config, run_dir=run_dir)
     if dm0 is not None:
         energy = mf_freq.kernel(dm0=dm0)
@@ -1074,6 +1091,7 @@ def compute_imaginary_mode(
     else:
         mf_mode = dft.UKS(mol_mode)
     mf_mode.xc = xc
+    mf_mode, _ = apply_density_fit_setting(mf_mode, scf_config)
     if solvent_model is not None:
         mf_mode = apply_solvent_model(
             mf_mode,
@@ -1083,7 +1101,7 @@ def compute_imaginary_mode(
         )
     if verbose:
         mf_mode.verbose = 4
-    mf_mode, _ = apply_scf_settings(mf_mode, scf_config)
+    mf_mode, _ = apply_scf_settings(mf_mode, scf_config, apply_density_fit=False)
     dm0, _ = apply_scf_checkpoint(mf_mode, scf_config, run_dir=run_dir)
     if dm0 is not None:
         mf_mode.kernel(dm0=dm0)
@@ -1135,6 +1153,7 @@ def run_capability_check(
     else:
         mf_check = dft.UKS(mol_check)
     mf_check.xc = normalize_xc_functional(xc)
+    mf_check, _ = apply_density_fit_setting(mf_check, scf_config)
     if solvent_model is not None:
         mf_check = apply_solvent_model(
             mf_check,
@@ -1147,7 +1166,7 @@ def run_capability_check(
     scf_override = dict(scf_config or {})
     current_max = scf_override.get("max_cycle", max_scf_cycles)
     scf_override["max_cycle"] = min(current_max, max_scf_cycles)
-    mf_check, _ = apply_scf_settings(mf_check, scf_override)
+    mf_check, _ = apply_scf_settings(mf_check, scf_override, apply_density_fit=False)
     try:
         mf_check.kernel()
     except Exception as exc:

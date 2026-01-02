@@ -17,6 +17,7 @@ from run_opt_config import (
     load_solvent_map_from_resource,
 )
 from run_opt_engine import (
+    apply_density_fit_setting,
     apply_scf_settings,
     apply_solvent_model,
     compute_imaginary_mode,
@@ -259,6 +260,11 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             )
 
             eps = None
+            apply_scf = calculation_mode == "optimization" or (
+                calculation_mode == "scan" and scan_mode == "optimization"
+            )
+            if apply_scf:
+                mf, _ = apply_density_fit_setting(mf, scf_config)
             if solvent_name:
                 solvent_key = solvent_name.lower()
                 if not _is_vacuum_solvent(solvent_key):
@@ -288,10 +294,10 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             if verbose:
                 mf.verbose = 4
             applied_scf = scf_config or None
-            if calculation_mode == "optimization" or (
-                calculation_mode == "scan" and scan_mode == "optimization"
-            ):
-                mf, applied_scf = apply_scf_settings(mf, scf_config)
+            if apply_scf:
+                mf, applied_scf = apply_scf_settings(
+                    mf, scf_config, apply_density_fit=False
+                )
             context["applied_scf"] = applied_scf
 
             sp_basis = (
