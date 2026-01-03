@@ -4,13 +4,15 @@ import signal
 import subprocess
 import sys
 import traceback
+from datetime import datetime
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PySide6.QtCharts import QChart, QChartView, QLineSeries, QScatterSeries, QValueAxis
 
+from run_opt_config import validate_run_config
 from run_opt_paths import get_app_base_dir, get_runs_base_dir
 
 
@@ -49,6 +51,27 @@ def _tail_lines(path: Path, max_lines: int) -> list[str]:
             return list(deque(handle, maxlen=max_lines))
     except OSError:
         return []
+
+
+def _axis_range(values: list[float]) -> tuple[float, float]:
+    if not values:
+        return (0.0, 1.0)
+    vmin = min(values)
+    vmax = max(values)
+    if vmin == vmax:
+        pad = 1.0 if vmin == 0 else abs(vmin) * 0.1
+        return (vmin - pad, vmax + pad)
+    pad = (vmax - vmin) * 0.05
+    return (vmin - pad, vmax + pad)
+
+
+def _safe_results(payload: dict | None) -> dict:
+    if not payload:
+        return {}
+    results = payload.get("results")
+    if isinstance(results, dict):
+        return results
+    return {}
 
 
 def _iter_metadata_files(base_dir: Path, max_depth: int = 2):
@@ -94,23 +117,141 @@ class RunSubmitDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("New Run")
         self.setModal(True)
+        self.setMinimumWidth(520)
 
-        self.xyz_path = QtWidgets.QLineEdit()
-        self.config_path = QtWidgets.QLineEdit()
-        self.solvent_map_path = QtWidgets.QLineEdit()
-
-        xyz_button = QtWidgets.QPushButton("Browse...")
-        config_button = QtWidgets.QPushButton("Browse...")
-        solvent_button = QtWidgets.QPushButton("Browse...")
-
-        xyz_button.clicked.connect(lambda: self._pick_file(self.xyz_path))
-        config_button.clicked.connect(lambda: self._pick_file(self.config_path))
-        solvent_button.clicked.connect(lambda: self._pick_file(self.solvent_map_path))
+        self._atom_labels: list[str] = []
 
         form = QtWidgets.QFormLayout()
+        self.xyz_path = QtWidgets.QLineEdit()
+        xyz_button = QtWidgets.QPushButton("Browse...")
+        xyz_button.clicked.connect(self._pick_xyz)
         form.addRow("XYZ file", self._wrap_picker(self.xyz_path, xyz_button))
-        form.addRow("Config file", self._wrap_picker(self.config_path, config_button))
-        form.addRow("Solvent map (optional)", self._wrap_picker(self.solvent_map_path, solvent_button))
+
+        self.calc_mode = QtWidgets.QComboBox()
+        self.calc_mode.addItems(
+            [
+                "Optimization",
+                "Constrained relaxation",
+                "Frequency",
+                "Single point",
+                "Scan",
+            ]
+        )
+        self.calc_mode.currentIndexChanged.connect(self._update_mode_panel)
+        form.addRow("Simulation", self.calc_mode)
+
+        self.basis_box = QtWidgets.QComboBox()
+        self.basis_box.setEditable(True)
+        basis_values = [
+            "sto-3g",
+            "3-21g",
+            "6-31g",
+            "6-31g*",
+            "6-31g**",
+            "6-31+g",
+            "6-31+g*",
+            "6-31+g**",
+            "6-31g(d)",
+            "6-31g(d,p)",
+            "6-31+g(d)",
+            "6-31+g(d,p)",
+            "6-311g",
+            "6-311g*",
+            "6-311g**",
+            "6-311+g",
+            "6-311+g*",
+            "6-311+g**",
+            "6-311++g",
+            "6-311++g**",
+            "def2-svp",
+            "def2-svpd",
+            "def2-tzvp",
+            "def2-tzvpd",
+            "def2-tzvpp",
+            "def2-qzvp",
+            "def2-qzvpd",
+            "def2-qzvpp",
+            "cc-pvdz",
+            "cc-pvtz",
+            "cc-pvqz",
+            "aug-cc-pvdz",
+            "aug-cc-pvtz",
+            "aug-cc-pvqz",
+            "cc-pcvdz",
+            "cc-pcvtz",
+            "def2-svp-jkfit",
+            "def2-tzvp-jkfit",
+            "def2-svp-ri",
+            "def2-tzvp-ri",
+        ]
+        self.basis_box.addItems(basis_values)
+        basis_completer = QtWidgets.QCompleter(basis_values, self)
+        basis_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        basis_completer.setFilterMode(QtCore.Qt.MatchContains)
+        self.basis_box.setCompleter(basis_completer)
+        form.addRow("Basis", self.basis_box)
+
+        self.xc_box = QtWidgets.QComboBox()
+        self.xc_box.setEditable(True)
+        xc_values = [
+            "b3lyp",
+            "pbe0",
+            "pbe",
+            "bp86",
+            "blyp",
+            "tpss",
+            "rev-tpss",
+            "m06",
+            "m06-2x",
+            "m06-l",
+            "wb97x-d",
+            "wb97m-v",
+            "cam-b3lyp",
+            "b97-d",
+            "b97-3c",
+            "b97x-d",
+            "pbe-d3bj",
+            "pbe0-d3bj",
+            "b3lyp-d3bj",
+            "scan",
+            "r2scan",
+            "r2scan-3c",
+        ]
+        self.xc_box.addItems(xc_values)
+        xc_completer = QtWidgets.QCompleter(xc_values, self)
+        xc_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        xc_completer.setFilterMode(QtCore.Qt.MatchContains)
+        self.xc_box.setCompleter(xc_completer)
+        form.addRow("XC", self.xc_box)
+
+        self.solvent_box = QtWidgets.QComboBox()
+        self.solvent_box.setEditable(True)
+        self.solvent_box.addItems(
+            [
+                "water",
+                "acetonitrile",
+                "methanol",
+                "ethanol",
+                "acetone",
+                "dichloromethane",
+            ]
+        )
+        form.addRow("Solvent", self.solvent_box)
+
+        self.solvent_model_box = QtWidgets.QComboBox()
+        self.solvent_model_box.addItems(["none", "pcm", "smd"])
+        form.addRow("Solvent model", self.solvent_model_box)
+
+        self.dispersion_box = QtWidgets.QComboBox()
+        self.dispersion_box.addItems(["none", "d3bj", "d3zero", "d4"])
+        form.addRow("Dispersion", self.dispersion_box)
+
+        self.mode_panel = QtWidgets.QStackedWidget()
+        self.mode_panel.addWidget(self._build_empty_panel())
+        self.mode_panel.addWidget(self._build_optimization_panel())
+        self.mode_panel.addWidget(self._build_constraint_panel())
+        self.mode_panel.addWidget(self._build_scan_panel())
+        form.addRow("Options", self.mode_panel)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
@@ -122,6 +263,7 @@ class RunSubmitDialog(QtWidgets.QDialog):
         layout.addLayout(form)
         layout.addWidget(buttons)
         self.setLayout(layout)
+        self._update_mode_panel()
 
     def _wrap_picker(self, line_edit, button):
         container = QtWidgets.QWidget()
@@ -137,11 +279,278 @@ class RunSubmitDialog(QtWidgets.QDialog):
         if path:
             target.setText(path)
 
+    def _pick_xyz(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select XYZ file")
+        if not path:
+            return
+        self.xyz_path.setText(path)
+        self._load_xyz_atoms(path)
+
+    def _load_xyz_atoms(self, path: str):
+        labels: list[str] = []
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                first = handle.readline().strip()
+                count = int(first)
+                handle.readline()
+                for idx in range(count):
+                    line = handle.readline()
+                    if not line:
+                        break
+                    parts = line.split()
+                    symbol = parts[0] if parts else "X"
+                    labels.append(f"{idx}: {symbol}")
+        except (OSError, ValueError):
+            labels = []
+        self._atom_labels = labels
+        self._refresh_atom_combos()
+
+    def _refresh_atom_combos(self):
+        combos = [
+            self.constraint_i,
+            self.constraint_j,
+            self.constraint_k,
+            self.constraint_l,
+            self.scan_i,
+            self.scan_j,
+            self.scan_k,
+            self.scan_l,
+        ]
+        for combo in combos:
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(self._atom_labels)
+            combo.blockSignals(False)
+
+    def _build_empty_panel(self):
+        panel = QtWidgets.QWidget()
+        panel.setLayout(QtWidgets.QVBoxLayout())
+        panel.layout().addWidget(QtWidgets.QLabel("No additional options."))
+        return panel
+
+    def _build_optimization_panel(self):
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout()
+        self.opt_optimizer = QtWidgets.QComboBox()
+        self.opt_optimizer.addItems(["bfgs", "lbfgs", "fire", "gpmin", "mdmin", "sella"])
+        self.opt_fmax = QtWidgets.QDoubleSpinBox()
+        self.opt_fmax.setRange(0.0001, 10.0)
+        self.opt_fmax.setDecimals(4)
+        self.opt_fmax.setSingleStep(0.01)
+        self.opt_fmax.setValue(0.05)
+        self.opt_steps = QtWidgets.QSpinBox()
+        self.opt_steps.setRange(1, 5000)
+        self.opt_steps.setValue(200)
+        layout.addRow("Optimizer", self.opt_optimizer)
+        layout.addRow("Fmax", self.opt_fmax)
+        layout.addRow("Max steps", self.opt_steps)
+        panel.setLayout(layout)
+        return panel
+
+    def _build_constraint_panel(self):
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout()
+        self.constraint_type = QtWidgets.QComboBox()
+        self.constraint_type.addItems(["bond", "angle", "dihedral"])
+        self.constraint_type.currentIndexChanged.connect(self._update_constraint_fields)
+        self.constraint_i = QtWidgets.QComboBox()
+        self.constraint_j = QtWidgets.QComboBox()
+        self.constraint_k = QtWidgets.QComboBox()
+        self.constraint_l = QtWidgets.QComboBox()
+        self.constraint_value = QtWidgets.QDoubleSpinBox()
+        self.constraint_value.setRange(-360.0, 360.0)
+        self.constraint_value.setDecimals(4)
+        self.constraint_value.setSingleStep(0.1)
+        layout.addRow("Constraint type", self.constraint_type)
+        layout.addRow("Atom i", self.constraint_i)
+        layout.addRow("Atom j", self.constraint_j)
+        layout.addRow("Atom k", self.constraint_k)
+        layout.addRow("Atom l", self.constraint_l)
+        layout.addRow("Target value", self.constraint_value)
+        self.constraint_optimizer = QtWidgets.QComboBox()
+        self.constraint_optimizer.addItems(["bfgs", "lbfgs", "fire", "gpmin", "mdmin", "sella"])
+        self.constraint_fmax = QtWidgets.QDoubleSpinBox()
+        self.constraint_fmax.setRange(0.0001, 10.0)
+        self.constraint_fmax.setDecimals(4)
+        self.constraint_fmax.setSingleStep(0.01)
+        self.constraint_fmax.setValue(0.05)
+        self.constraint_steps = QtWidgets.QSpinBox()
+        self.constraint_steps.setRange(1, 5000)
+        self.constraint_steps.setValue(200)
+        layout.addRow("Optimizer", self.constraint_optimizer)
+        layout.addRow("Fmax", self.constraint_fmax)
+        layout.addRow("Max steps", self.constraint_steps)
+        panel.setLayout(layout)
+        self._update_constraint_fields()
+        return panel
+
+    def _build_scan_panel(self):
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout()
+        self.scan_type = QtWidgets.QComboBox()
+        self.scan_type.addItems(["bond", "angle", "dihedral"])
+        self.scan_type.currentIndexChanged.connect(self._update_scan_fields)
+        self.scan_mode = QtWidgets.QComboBox()
+        self.scan_mode.addItems(["optimization", "single_point"])
+        self.scan_i = QtWidgets.QComboBox()
+        self.scan_j = QtWidgets.QComboBox()
+        self.scan_k = QtWidgets.QComboBox()
+        self.scan_l = QtWidgets.QComboBox()
+        self.scan_start = QtWidgets.QDoubleSpinBox()
+        self.scan_start.setRange(-360.0, 360.0)
+        self.scan_start.setDecimals(4)
+        self.scan_start.setSingleStep(0.1)
+        self.scan_end = QtWidgets.QDoubleSpinBox()
+        self.scan_end.setRange(-360.0, 360.0)
+        self.scan_end.setDecimals(4)
+        self.scan_end.setSingleStep(0.1)
+        self.scan_step = QtWidgets.QDoubleSpinBox()
+        self.scan_step.setRange(0.0001, 360.0)
+        self.scan_step.setDecimals(4)
+        self.scan_step.setSingleStep(0.1)
+        layout.addRow("Scan type", self.scan_type)
+        layout.addRow("Scan mode", self.scan_mode)
+        layout.addRow("Atom i", self.scan_i)
+        layout.addRow("Atom j", self.scan_j)
+        layout.addRow("Atom k", self.scan_k)
+        layout.addRow("Atom l", self.scan_l)
+        layout.addRow("Start", self.scan_start)
+        layout.addRow("End", self.scan_end)
+        layout.addRow("Step", self.scan_step)
+        panel.setLayout(layout)
+        self._update_scan_fields()
+        return panel
+
+    def _update_constraint_fields(self):
+        constraint_type = self.constraint_type.currentText()
+        needs_k = constraint_type in ("angle", "dihedral")
+        needs_l = constraint_type == "dihedral"
+        self.constraint_k.setEnabled(needs_k)
+        self.constraint_l.setEnabled(needs_l)
+        if constraint_type == "bond":
+            self.constraint_value.setRange(0.0, 10.0)
+            self.constraint_value.setSingleStep(0.01)
+        elif constraint_type == "angle":
+            self.constraint_value.setRange(0.0, 180.0)
+            self.constraint_value.setSingleStep(1.0)
+        else:
+            self.constraint_value.setRange(-180.0, 180.0)
+            self.constraint_value.setSingleStep(1.0)
+
+    def _update_scan_fields(self):
+        scan_type = self.scan_type.currentText()
+        needs_k = scan_type in ("angle", "dihedral")
+        needs_l = scan_type == "dihedral"
+        self.scan_k.setEnabled(needs_k)
+        self.scan_l.setEnabled(needs_l)
+
+    def _update_mode_panel(self):
+        mode = self.calc_mode.currentText()
+        if mode == "Optimization":
+            self.mode_panel.setCurrentIndex(1)
+        elif mode == "Constrained relaxation":
+            self.mode_panel.setCurrentIndex(2)
+        elif mode == "Scan":
+            self.mode_panel.setCurrentIndex(3)
+        else:
+            self.mode_panel.setCurrentIndex(0)
+
     def get_values(self):
+        if not self.xyz_path.text().strip():
+            return {"xyz": None}
+        basis = self.basis_box.currentText().strip()
+        xc = self.xc_box.currentText().strip()
+        solvent = self.solvent_box.currentText().strip()
+        solvent_model = self.solvent_model_box.currentText()
+        if solvent_model == "none":
+            solvent_model = None
+        dispersion = self.dispersion_box.currentText()
+        if dispersion == "none":
+            dispersion = None
+        mode_text = self.calc_mode.currentText()
+        calculation_mode = {
+            "Optimization": "optimization",
+            "Constrained relaxation": "optimization",
+            "Frequency": "frequency",
+            "Single point": "single_point",
+            "Scan": "scan",
+        }[mode_text]
+
+        if mode_text in ("Constrained relaxation", "Scan") and not self._atom_labels:
+            return {"xyz": None, "error": "Unable to read atoms from XYZ file."}
+
+        def _combo_index(combo):
+            index = combo.currentIndex()
+            return index if index >= 0 else None
+
+        config = {
+            "basis": basis,
+            "xc": xc,
+            "solvent": solvent,
+            "solvent_model": solvent_model,
+            "dispersion": dispersion,
+            "calculation_mode": calculation_mode,
+        }
+
+        if mode_text == "Optimization":
+            optimizer_block = {
+                "optimizer": self.opt_optimizer.currentText().strip(),
+                "fmax": float(self.opt_fmax.value()),
+                "steps": int(self.opt_steps.value()),
+            }
+            config["optimizer"] = {"mode": "minimum", "ase": optimizer_block}
+
+        if mode_text == "Constrained relaxation":
+            optimizer_block = {
+                "optimizer": self.constraint_optimizer.currentText().strip(),
+                "fmax": float(self.constraint_fmax.value()),
+                "steps": int(self.constraint_steps.value()),
+            }
+            config["optimizer"] = {"mode": "minimum", "ase": optimizer_block}
+            constraint_type = self.constraint_type.currentText()
+            constraint = {
+                "i": _combo_index(self.constraint_i),
+                "j": _combo_index(self.constraint_j),
+            }
+            if constraint_type in ("angle", "dihedral"):
+                constraint["k"] = _combo_index(self.constraint_k)
+            if constraint_type == "dihedral":
+                constraint["l"] = _combo_index(self.constraint_l)
+            if any(value is None for value in constraint.values()):
+                return {"xyz": None, "error": "Select all constraint atom indices."}
+            value = float(self.constraint_value.value())
+            if constraint_type == "bond":
+                constraint["length"] = value
+                config["constraints"] = {"bonds": [constraint]}
+            elif constraint_type == "angle":
+                constraint["angle"] = value
+                config["constraints"] = {"angles": [constraint]}
+            else:
+                constraint["dihedral"] = value
+                config["constraints"] = {"dihedrals": [constraint]}
+
+        if mode_text == "Scan":
+            scan_type = self.scan_type.currentText()
+            scan_config = {
+                "type": scan_type,
+                "i": _combo_index(self.scan_i),
+                "j": _combo_index(self.scan_j),
+                "start": float(self.scan_start.value()),
+                "end": float(self.scan_end.value()),
+                "step": float(self.scan_step.value()),
+                "mode": self.scan_mode.currentText(),
+            }
+            if scan_type in ("angle", "dihedral"):
+                scan_config["k"] = _combo_index(self.scan_k)
+            if scan_type == "dihedral":
+                scan_config["l"] = _combo_index(self.scan_l)
+            if any(value is None for key, value in scan_config.items() if key in {"i", "j", "k", "l"}):
+                return {"xyz": None, "error": "Select all scan atom indices."}
+            config["scan"] = scan_config
+
         return {
             "xyz": self.xyz_path.text().strip() or None,
-            "config": self.config_path.text().strip() or None,
-            "solvent_map": self.solvent_map_path.text().strip() or None,
+            "config": config,
         }
 
 
@@ -239,11 +648,28 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
         if dialog.exec() != QtWidgets.QDialog.Accepted:
             return
         values = dialog.get_values()
-        if not values["xyz"] or not values["config"]:
+        if values.get("error"):
+            QtWidgets.QMessageBox.warning(self, "Invalid input", values["error"])
+            return
+        if not values.get("xyz") or not values.get("config"):
             QtWidgets.QMessageBox.warning(
-                self, "Missing input", "XYZ and config files are required."
+                self, "Missing input", "XYZ and simulation settings are required."
             )
             return
+        config = values["config"]
+        try:
+            validate_run_config(config)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(
+                self, "Invalid settings", f"Config validation failed: {exc}"
+            )
+            return
+        config_dir = Path(self.runs_dir) / "configs"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        config_path = config_dir / f"run_config_{timestamp}.json"
+        with config_path.open("w", encoding="utf-8") as handle:
+            json.dump(config, handle, indent=2)
         command = [
             sys.executable,
             "-m",
@@ -251,10 +677,8 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
             "run",
             values["xyz"],
             "--config",
-            values["config"],
+            str(config_path),
         ]
-        if values["solvent_map"]:
-            command.extend(["--solvent-map", values["solvent_map"]])
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         subprocess.Popen(
@@ -368,13 +792,70 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                 self.chart_view.setChart(QChart())
                 return
             run_dir = Path(self.current_run.run_dir)
+            opt_log = run_dir / "ase_opt.log"
             irc_csv = run_dir / "irc_profile.csv"
             scan_csv = run_dir / "scan_result.csv"
             freq_json = run_dir / "frequency_result.json"
             sp_json = run_dir / "qcschema_result.json"
 
+            if opt_log.exists():
+                step_index = None
+                energy_index = None
+                x_values = []
+                y_values = []
+                line_series = QLineSeries()
+                with opt_log.open("r", encoding="utf-8", errors="replace") as handle:
+                    for line in handle:
+                        parts = line.strip().split()
+                        if not parts:
+                            continue
+                        if parts[0] == "Step" and "Energy" in parts:
+                            step_index = parts.index("Step")
+                            energy_index = parts.index("Energy")
+                            continue
+                        if parts[0].endswith(":"):
+                            parts = parts[1:]
+                        if step_index is not None and energy_index is not None:
+                            if len(parts) <= max(step_index, energy_index):
+                                continue
+                            step_token = parts[step_index]
+                            energy_token = parts[energy_index]
+                        else:
+                            if len(parts) < 3:
+                                continue
+                            step_token = parts[0]
+                            energy_token = parts[2]
+                        try:
+                            step = float(step_token)
+                            energy = float(energy_token)
+                        except ValueError:
+                            continue
+                        x_values.append(step)
+                        y_values.append(energy)
+                        line_series.append(step, energy)
+                if x_values:
+                    chart = QChart()
+                    chart.addSeries(line_series)
+                    axis_x = QValueAxis()
+                    axis_x.setTitleText("Step")
+                    axis_y = QValueAxis()
+                    axis_y.setTitleText("Energy (Hartree)")
+                    x_min, x_max = _axis_range(x_values)
+                    y_min, y_max = _axis_range(y_values)
+                    axis_x.setRange(x_min, x_max)
+                    axis_y.setRange(y_min, y_max)
+                    chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
+                    chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
+                    line_series.attachAxis(axis_x)
+                    line_series.attachAxis(axis_y)
+                    self.results_info.setText("Optimization energy profile.")
+                    self.chart_view.setChart(chart)
+                    return
+
             if irc_csv.exists():
                 series = {}
+                x_values = []
+                y_values = []
                 with irc_csv.open("r", encoding="utf-8", errors="replace") as handle:
                     header = handle.readline().strip().split(",")
                     try:
@@ -395,6 +876,8 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                             energy = float(parts[energy_index])
                         except ValueError:
                             continue
+                        x_values.append(step)
+                        y_values.append(energy)
                         series.setdefault(direction, []).append((step, energy))
                 chart = QChart()
                 for direction, points in series.items():
@@ -407,6 +890,10 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                 axis_x.setTitleText("Step")
                 axis_y = QValueAxis()
                 axis_y.setTitleText("Energy (eV)")
+                x_min, x_max = _axis_range(x_values)
+                y_min, y_max = _axis_range(y_values)
+                axis_x.setRange(x_min, x_max)
+                axis_y.setRange(y_min, y_max)
                 chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
                 chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
                 for s in chart.series():
@@ -418,6 +905,8 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                 return
 
             if scan_csv.exists():
+                x_values = []
+                y_values = []
                 with scan_csv.open("r", encoding="utf-8", errors="replace") as handle:
                     header = handle.readline().strip().split(",")
                     if len(header) < 3:
@@ -444,6 +933,8 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                             energy = float(parts[energy_index])
                         except ValueError:
                             continue
+                        x_values.append(coord)
+                        y_values.append(energy)
                         line_series.append(coord, energy)
                 chart = QChart()
                 chart.addSeries(line_series)
@@ -451,6 +942,10 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                 axis_x.setTitleText(header[coord_index])
                 axis_y = QValueAxis()
                 axis_y.setTitleText("Energy (Hartree)")
+                x_min, x_max = _axis_range(x_values)
+                y_min, y_max = _axis_range(y_values)
+                axis_x.setRange(x_min, x_max)
+                axis_y.setRange(y_min, y_max)
                 chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
                 chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
                 line_series.attachAxis(axis_x)
@@ -465,19 +960,29 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                     self.results_info.setText("Frequency result unavailable.")
                     self.chart_view.setChart(QChart())
                     return
-                frequencies = payload.get("results", {}).get("frequencies_wavenumber") or []
+                results = _safe_results(payload)
+                frequencies = results.get("frequencies_wavenumber") or []
                 line_series = QLineSeries()
+                x_values = []
+                y_values = []
                 for idx, value in enumerate(frequencies, start=1):
                     try:
-                        line_series.append(idx, float(value))
+                        freq = float(value)
                     except (TypeError, ValueError):
                         continue
+                    x_values.append(float(idx))
+                    y_values.append(freq)
+                    line_series.append(idx, freq)
                 chart = QChart()
                 chart.addSeries(line_series)
                 axis_x = QValueAxis()
                 axis_x.setTitleText("Mode index")
                 axis_y = QValueAxis()
                 axis_y.setTitleText("Frequency (cm^-1)")
+                x_min, x_max = _axis_range(x_values)
+                y_min, y_max = _axis_range(y_values)
+                axis_x.setRange(x_min, x_max)
+                axis_y.setRange(y_min, y_max)
                 chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
                 chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
                 line_series.attachAxis(axis_x)
@@ -495,9 +1000,26 @@ class DFTFlowWindow(QtWidgets.QMainWindow):
                         energy = payload.get("properties", {}).get("return_energy")
                 if energy is not None:
                     self.results_info.setText(f"Single-point energy: {energy:.6f} Hartree")
+                    scatter = QScatterSeries()
+                    scatter.append(1.0, float(energy))
+                    chart = QChart()
+                    chart.addSeries(scatter)
+                    axis_x = QValueAxis()
+                    axis_x.setTitleText("Point")
+                    axis_y = QValueAxis()
+                    axis_y.setTitleText("Energy (Hartree)")
+                    x_min, x_max = _axis_range([1.0])
+                    y_min, y_max = _axis_range([float(energy)])
+                    axis_x.setRange(x_min, x_max)
+                    axis_y.setRange(y_min, y_max)
+                    chart.addAxis(axis_x, QtCore.Qt.AlignBottom)
+                    chart.addAxis(axis_y, QtCore.Qt.AlignLeft)
+                    scatter.attachAxis(axis_x)
+                    scatter.attachAxis(axis_y)
+                    self.chart_view.setChart(chart)
                 else:
                     self.results_info.setText("Single-point result available.")
-                self.chart_view.setChart(QChart())
+                    self.chart_view.setChart(QChart())
                 return
 
             self.results_info.setText("No results available.")
