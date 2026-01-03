@@ -29,6 +29,7 @@ SOLVENT_MODEL_OPTIONS = ["pcm", "none (vacuum)"]
 DISPERSION_MODEL_OPTIONS = ["none (disabled)", "d3bj", "d3zero", "d4"]
 CALCULATION_MODE_OPTIONS = [
     "Geometry optimization",
+    "Constrained geometry optimization",
     "Single-point energy",
     "Frequency analysis",
     "IRC calculation",
@@ -165,11 +166,13 @@ def _prompt_interactive_config(args):
     )
     calculation_mode = {
         "Geometry optimization": "optimization",
+        "Constrained geometry optimization": "optimization",
         "Single-point energy": "single_point",
         "Frequency analysis": "frequency",
         "IRC calculation": "irc",
         "Scan calculation": "scan",
     }[calculation_choice]
+    constraints_enabled = calculation_choice == "Constrained geometry optimization"
     optimization_choice = None
     scan_config = None
     if calculation_mode == "optimization":
@@ -234,31 +237,33 @@ def _prompt_interactive_config(args):
         ase_config.setdefault("logfile", "ts_opt.log")
         ase_config.setdefault("sella", {"order": 1})
 
-    constraints_default = config.get("constraints")
-    if constraints_default:
-        constraints_hint = json.dumps(constraints_default, ensure_ascii=False)
-    else:
-        constraints_hint = ""
-    constraints_prompt = (
-        "Enter constraints as JSON (e.g., "
-        "{\"bonds\":[{\"i\":0,\"j\":1,\"length\":1.10}]})"
-    )
-    if constraints_hint:
-        constraints_prompt += f" [default: {constraints_hint}]"
-    constraints_input = input(f"{constraints_prompt}\n> ").strip()
-    if not constraints_input and constraints_default is not None:
-        constraints = constraints_default
-    elif not constraints_input:
-        constraints = None
-    elif constraints_input.lower() in ("none", "null", "no"):
-        constraints = None
-    else:
-        try:
-            constraints = json.loads(constraints_input)
-        except json.JSONDecodeError as exc:
-            raise ValueError("constraints input is not valid JSON.") from exc
-        if not isinstance(constraints, dict):
-            raise ValueError("constraints input must be a JSON object.")
+    constraints = None
+    if constraints_enabled:
+        constraints_default = config.get("constraints")
+        if constraints_default:
+            constraints_hint = json.dumps(constraints_default, ensure_ascii=False)
+        else:
+            constraints_hint = ""
+        constraints_prompt = (
+            "Enter constraints as JSON (e.g., "
+            "{\"bonds\":[{\"i\":0,\"j\":1,\"length\":1.10}]})"
+        )
+        if constraints_hint:
+            constraints_prompt += f" [default: {constraints_hint}]"
+        constraints_input = input(f"{constraints_prompt}\n> ").strip()
+        if not constraints_input and constraints_default is not None:
+            constraints = constraints_default
+        elif not constraints_input:
+            constraints = None
+        elif constraints_input.lower() in ("none", "null", "no"):
+            constraints = None
+        else:
+            try:
+                constraints = json.loads(constraints_input)
+            except json.JSONDecodeError as exc:
+                raise ValueError("constraints input is not valid JSON.") from exc
+            if not isinstance(constraints, dict):
+                raise ValueError("constraints input must be a JSON object.")
 
     if not args.xyz_file:
         input_dir = _resolve_interactive_input_dir()
