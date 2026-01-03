@@ -3,6 +3,7 @@
 __all__ = ["main"]
 
 import argparse
+import importlib.util
 import itertools
 import json
 import logging
@@ -204,9 +205,7 @@ def _prepare_smoke_test_suite(args):
         [*SMOKE_TEST_DISPERSION_MODELS, base_config.get("dispersion")]
     )
     if "d4" in dispersion_options:
-        try:
-            from dftd4 import ase as _dftd4_ase
-        except ImportError:
+        if importlib.util.find_spec("dftd4.ase") is None:
             dispersion_options = [item for item in dispersion_options if item != "d4"]
             logging.warning(
                 "dftd4 is not installed; skipping D4 dispersion in smoke tests."
@@ -822,7 +821,7 @@ def main():
                                     **failures[-1]
                                 )
                             )
-                            raise SystemExit(1)
+                            raise SystemExit(1) from error
                         continue
             if failures:
                 print(
