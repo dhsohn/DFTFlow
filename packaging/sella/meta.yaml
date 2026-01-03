@@ -1,0 +1,41 @@
+{% set name = "sella" %}
+{% set version = "2.3.5" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  url: https://files.pythonhosted.org/packages/source/s/sella/sella-{{ version }}.tar.gz
+  sha256: 2340eea946c936b24ed918713d5448f9ca76f5a4ea28be9aa6e11eb91b96c372
+
+build:
+  number: 0
+  noarch: python
+
+requirements:
+  host:
+    - python =3.12
+    - pip
+    - setuptools
+    - numpy >=1.14.0
+  run:
+    - python >=3.12,<3.13
+    - numpy >=1.14.0
+    - scipy >=1.1.0
+    - ase >=3.18.0
+    - jax >=0.4.20
+    - jaxlib >=0.4.20
+
+test:
+  imports:
+    - sella
+
+about:
+  home: https://github.com/zadorlab/sella
+  summary: Saddle point searches and minima optimization for ASE.
+  license: MIT
+
+extra:
+  recipe-maintainers:
+    - daehyupsohn

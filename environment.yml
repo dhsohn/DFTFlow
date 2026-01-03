@@ -26,5 +26,6 @@ dependencies:
   - dftd3-python
   - dftd4
   - pyside6
+  - qt6-charts
   - pytest
   - jsonschema

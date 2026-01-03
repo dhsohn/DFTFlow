@@ -24,10 +24,13 @@ requirements:
     - dftd4
     - h5py
     - jsonschema >=4.18
+    - basis-set-exchange
     - numpy
     - pyscf
     - pyyaml >=6.0
     - pyside6
+    - qt6-charts
+    - sella
     - scipy
 
 test:
