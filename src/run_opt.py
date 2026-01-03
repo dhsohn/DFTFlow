@@ -245,6 +245,7 @@ def _run_smoke_test_watch(args):
         args.run_dir = create_run_directory()
     base_run_dir = str(Path(args.run_dir).expanduser().resolve())
     os.makedirs(base_run_dir, exist_ok=True)
+    watch_log_path = os.path.join(base_run_dir, "smoke_watch.log")
 
     cmd = [
         sys.executable,
@@ -260,9 +261,19 @@ def _run_smoke_test_watch(args):
     if args.stop_on_error:
         cmd.append("--stop-on-error")
 
+    def _log_watch(message):
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        line = f"{timestamp} {message}"
+        logging.info(line)
+        try:
+            with open(watch_log_path, "a", encoding="utf-8") as log_file:
+                log_file.write(line + "\n")
+        except OSError:
+            pass
+
     restarts = 0
     while True:
-        logging.info("Starting smoke-test watch run.")
+        _log_watch("Starting smoke-test run.")
         process = subprocess.Popen(cmd)
         last_activity = time.time()
         latest = _find_latest_smoke_log_mtime(base_run_dir)
@@ -273,13 +284,16 @@ def _run_smoke_test_watch(args):
             return_code = process.poll()
             if return_code is not None:
                 if return_code == 0:
+                    _log_watch("Smoke-test completed successfully.")
                     print(f"Smoke test completed: {base_run_dir}")
                     return
                 if _smoke_test_has_failures(base_run_dir):
+                    _log_watch(
+                        f"Smoke-test exited with failures (code {return_code})."
+                    )
                     raise SystemExit(return_code)
-                logging.warning(
-                    "Smoke-test process exited unexpectedly (code %s); restarting.",
-                    return_code,
+                _log_watch(
+                    f"Smoke-test exited unexpectedly (code {return_code}); restarting."
                 )
                 restarts += 1
                 if args.watch_max_restarts and restarts > args.watch_max_restarts:
@@ -291,9 +305,8 @@ def _run_smoke_test_watch(args):
             if latest:
                 last_activity = max(last_activity, latest)
             if now - last_activity > args.watch_timeout:
-                logging.warning(
-                    "Smoke-test logs stalled for %s seconds; restarting.",
-                    args.watch_timeout,
+                _log_watch(
+                    f"Smoke-test logs stalled for {args.watch_timeout} seconds; restarting."
                 )
                 process.terminate()
                 try:
