@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible bug in pDFT
+description: Report a reproducible bug in DFTFlow
 labels: ["type:bug"]
 body:
   - type: textarea
