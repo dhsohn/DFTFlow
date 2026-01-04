@@ -7,7 +7,10 @@ stability note (APIs and workflows may change before 1.0).
 
 ## [Unreleased]
 
-- Placeholder for upcoming changes.
+- Smoke-test reliability improvements: progress tracking, heartbeat-based watch, and status auto-recovery.
+- Added `--smoke-mode` (default quick) to control smoke-test matrix size.
+- Queue runner now auto-prunes entries older than 3 days on startup.
+- SMD now errors when unavailable instead of falling back to PCM/vacuum.
 
 ## [0.1.0] - TBD
 

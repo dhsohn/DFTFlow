@@ -359,10 +359,10 @@ def _smd_available(mf):
     if not hasattr(mf, "SMD"):
         return False
     try:
-        from pyscf.solvent import smd  # noqa: F401
+        from pyscf.solvent import smd
     except Exception:
         return False
-    return True
+    return getattr(smd, "libsolvent", None) is not None
 
 
 def apply_solvent_model(
@@ -387,11 +387,15 @@ def apply_solvent_model(
         if not _smd_available(mf):
             raise ValueError(
                 "SMD solvent model is unavailable in this PySCF build. "
-                "Install PySCF with solvent support or choose --solvent-model pcm."
+                "Install the SMD-enabled PySCF package from the DFTFlow conda channel."
             )
         supported = _supported_smd_solvents()
-        normalized = solvent_name.strip().lower()
-        supported_map = {name.strip().lower(): name for name in supported}
+        normalized = _normalize_solvent_key(solvent_name)
+        supported_map = {}
+        for name in supported:
+            key = _normalize_solvent_key(name)
+            if key and key not in supported_map:
+                supported_map[key] = name
         if normalized not in supported_map:
             preview = ", ".join(sorted(supported)[:10])
             raise ValueError(
@@ -405,6 +409,10 @@ def apply_solvent_model(
     else:
         raise ValueError(f"Unsupported solvent model '{solvent_model}'.")
     return mf
+
+
+def _normalize_solvent_key(name):
+    return "".join(char for char in name.lower() if char.isalnum())
 
 
 def _supported_smd_solvents():

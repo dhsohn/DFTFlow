@@ -9,7 +9,7 @@ source:
   path: ../..
 
 build:
-  number: 14
+  number: 16
   noarch: python
 
 requirements:
@@ -26,7 +26,7 @@ requirements:
     - jsonschema >=4.18
     - basis-set-exchange
     - numpy
-    - pyscf
+    - pyscf * smd_py*
     - pyyaml >=6.0
     - pyside6
     - qt6-charts

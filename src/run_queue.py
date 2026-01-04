@@ -19,6 +19,17 @@ from run_opt_config import (
 from run_opt_metadata import write_run_metadata
 from run_opt_resources import ensure_parent_dir
 
+QUEUE_PRUNE_KEEP_DAYS = 3
+QUEUE_PRUNE_STATUSES = (
+    "queued",
+    "running",
+    "started",
+    "completed",
+    "failed",
+    "timeout",
+    "canceled",
+)
+
 
 def _queue_priority_value(entry):
     try:
@@ -594,6 +605,20 @@ def _run_queue_worker(script_path, queue_path, lock_path, runner_lock_path):
     except OSError:
         return
     try:
+        _ensure_queue_file(queue_path)
+        removed, remaining = _prune_queue_entries(
+            queue_path,
+            lock_path,
+            QUEUE_PRUNE_KEEP_DAYS,
+            QUEUE_PRUNE_STATUSES,
+        )
+        if removed:
+            logging.info(
+                "Pruned %s queue entries older than %s days; %s remaining.",
+                removed,
+                QUEUE_PRUNE_KEEP_DAYS,
+                remaining,
+            )
         while True:
             entry = None
             entry_status_before = None

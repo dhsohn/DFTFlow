@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import time
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -42,6 +43,9 @@ H     -1.0147968531    2.4412472248   -2.0058431625
 SMOKE_TEST_MODES = ("single_point", "optimization", "frequency", "irc", "scan")
 SMOKE_TEST_SOLVENT_MODELS = (None, "pcm", "smd")
 SMOKE_TEST_DISPERSION_MODELS = (None, "d3bj", "d3zero", "d4")
+SMOKE_TEST_PROGRESS_FILE = "smoke_progress.json"
+SMOKE_TEST_HEARTBEAT_FILE = "smoke_heartbeat.txt"
+SMOKE_TEST_HEARTBEAT_INTERVAL = 30
 DEFAULT_BASIS_SET_OPTIONS = [
     "6-31g",
     "6-31g*",
@@ -60,6 +64,14 @@ DEFAULT_XC_FUNCTIONAL_OPTIONS = [
     "pbe",
     "b97-d",
 ]
+QUICK_BASIS_SET_OPTIONS = ["6-31g", "def2-svp"]
+QUICK_XC_FUNCTIONAL_OPTIONS = ["b3lyp", "pbe0"]
+QUICK_DISPERSION_MODELS = (None, "d3bj")
+QUICK_SOLVENT_MODELS = (None, "smd")
+
+
+def _normalize_solvent_key(name):
+    return "".join(char for char in str(name).lower() if char.isalnum())
 
 
 def _build_smoke_test_config(base_config, mode, overrides):
@@ -111,6 +123,74 @@ def _build_smoke_test_config(base_config, mode, overrides):
             ],
         }
     return config
+
+
+def _load_smoke_progress(base_run_dir):
+    progress_path = Path(base_run_dir) / SMOKE_TEST_PROGRESS_FILE
+    if not progress_path.exists():
+        return {"cases": {}, "updated_at": None}
+    try:
+        with progress_path.open("r", encoding="utf-8") as progress_file:
+            data = json.load(progress_file)
+    except (OSError, json.JSONDecodeError):
+        return {"cases": {}, "updated_at": None}
+    if not isinstance(data, dict):
+        return {"cases": {}, "updated_at": None}
+    data.setdefault("cases", {})
+    return data
+
+
+def _write_smoke_progress(base_run_dir, data):
+    progress_path = Path(base_run_dir) / SMOKE_TEST_PROGRESS_FILE
+    data["updated_at"] = datetime.now().isoformat()
+    tmp_path = progress_path.with_suffix(".tmp")
+    with tmp_path.open("w", encoding="utf-8") as progress_file:
+        json.dump(data, progress_file, indent=2)
+        progress_file.flush()
+        os.fsync(progress_file.fileno())
+    os.replace(tmp_path, progress_path)
+
+
+def _update_smoke_progress(base_run_dir, run_dir, status, error=None):
+    data = _load_smoke_progress(base_run_dir)
+    cases = data.setdefault("cases", {})
+    entry = cases.get(str(run_dir), {})
+    entry["status"] = status
+    entry["updated_at"] = datetime.now().isoformat()
+    if error:
+        entry["error"] = error
+    cases[str(run_dir)] = entry
+    _write_smoke_progress(base_run_dir, data)
+
+
+def _smoke_progress_status(base_run_dir, run_dir):
+    data = _load_smoke_progress(base_run_dir)
+    entry = data.get("cases", {}).get(str(run_dir))
+    if not entry:
+        return None
+    return entry.get("status")
+
+
+def _write_smoke_heartbeat(path):
+    payload = f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n"
+    heartbeat_path = Path(path)
+    with heartbeat_path.open("w", encoding="utf-8") as heartbeat_file:
+        heartbeat_file.write(payload)
+        heartbeat_file.flush()
+        os.fsync(heartbeat_file.fileno())
+
+
+def _start_smoke_heartbeat(path, interval):
+    stop_event = threading.Event()
+
+    def _beat():
+        _write_smoke_heartbeat(path)
+        while not stop_event.wait(interval):
+            _write_smoke_heartbeat(path)
+
+    thread = threading.Thread(target=_beat, daemon=True)
+    thread.start()
+    return stop_event
 
 
 def _unique_values(values):
@@ -172,13 +252,19 @@ def _write_smoke_skip_metadata(run_dir, overrides, mode, reason):
 def _prepare_smoke_test_suite(args):
     config_path = Path(args.config).expanduser().resolve()
     base_config, _base_raw = load_run_config(config_path)
-    basis_options = _unique_values(
-        [*DEFAULT_BASIS_SET_OPTIONS, base_config.get("basis")]
-    )
+    if args.smoke_mode == "quick":
+        basis_seed = QUICK_BASIS_SET_OPTIONS
+        xc_seed = QUICK_XC_FUNCTIONAL_OPTIONS
+        solvent_model_seed = QUICK_SOLVENT_MODELS
+        dispersion_seed = QUICK_DISPERSION_MODELS
+    else:
+        basis_seed = DEFAULT_BASIS_SET_OPTIONS
+        xc_seed = DEFAULT_XC_FUNCTIONAL_OPTIONS
+        solvent_model_seed = SMOKE_TEST_SOLVENT_MODELS
+        dispersion_seed = SMOKE_TEST_DISPERSION_MODELS
+    basis_options = _unique_values([*basis_seed, base_config.get("basis")])
     basis_options = [basis for basis in basis_options if basis]
-    xc_options = _unique_values(
-        [*DEFAULT_XC_FUNCTIONAL_OPTIONS, base_config.get("xc")]
-    )
+    xc_options = _unique_values([*xc_seed, base_config.get("xc")])
     xc_options = [xc for xc in xc_options if xc]
     try:
         from pyscf.scf import dispersion as pyscf_dispersion
@@ -199,19 +285,49 @@ def _prepare_smoke_test_suite(args):
             filtered_xc.append(xc)
         xc_options = filtered_xc
     solvent_model_options = _unique_values(
-        [*SMOKE_TEST_SOLVENT_MODELS, base_config.get("solvent_model")]
+        [*solvent_model_seed, base_config.get("solvent_model")]
     )
-    dispersion_options = _unique_values(
-        [*SMOKE_TEST_DISPERSION_MODELS, base_config.get("dispersion")]
-    )
+    dispersion_options = _unique_values([*dispersion_seed, base_config.get("dispersion")])
     if "d4" in dispersion_options:
-        if importlib.util.find_spec("dftd4.ase") is None:
+        try:
+            d4_spec = importlib.util.find_spec("dftd4.ase")
+        except ModuleNotFoundError:
+            d4_spec = None
+        if d4_spec is None:
             dispersion_options = [item for item in dispersion_options if item != "d4"]
             logging.warning(
                 "dftd4 is not installed; skipping D4 dispersion in smoke tests."
             )
     solvent_map_path = base_config.get("solvent_map") or DEFAULT_SOLVENT_MAP_PATH
     solvent_options = sorted(load_solvent_map(solvent_map_path).keys())
+    if args.smoke_mode == "quick":
+        quick_solvents = ["water", "benzene", "acetonitrile"]
+        preferred = [s for s in quick_solvents if s in solvent_options]
+        if preferred:
+            solvent_options = preferred
+        else:
+            solvent_options = solvent_options[:3]
+    smd_supported_keys = None
+    if "smd" in solvent_model_options:
+        try:
+            from pyscf.solvent import smd as pyscf_smd
+            from run_opt_engine import _supported_smd_solvents
+
+            if getattr(pyscf_smd, "libsolvent", None) is None:
+                logging.warning(
+                    "SMD is unavailable in this PySCF build; skipping SMD smoke tests."
+                )
+                smd_supported_keys = set()
+            else:
+                smd_supported_keys = {
+                    _normalize_solvent_key(name)
+                    for name in _supported_smd_solvents()
+                }
+        except Exception as exc:
+            logging.warning(
+                "Unable to load SMD solvent list; skipping SMD smoke tests (%s).", exc
+            )
+            smd_supported_keys = set()
     modes = list(SMOKE_TEST_MODES)
     cases = []
     for basis, xc, solvent_model, dispersion in itertools.product(
@@ -227,6 +343,9 @@ def _prepare_smoke_test_suite(args):
             )
         if solvent_model:
             for solvent in solvent_options:
+                if solvent_model == "smd" and smd_supported_keys is not None:
+                    if _normalize_solvent_key(solvent) not in smd_supported_keys:
+                        continue
                 cases.append(
                     {
                         "basis": basis,
@@ -294,6 +413,74 @@ def _format_subprocess_returncode(returncode):
     return str(returncode)
 
 
+def _write_smoke_status_file(run_dir, exit_code=None, overwrite=True):
+    status_path = Path(run_dir) / "smoke_subprocess.status"
+    if status_path.exists() and not overwrite:
+        return
+    _write_smoke_status_path(status_path, exit_code)
+
+
+def _write_smoke_status_path(status_path, exit_code=None):
+    status_message = _format_subprocess_returncode(exit_code)
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    status_payload = f"{timestamp} exit_code={status_message}\n"
+    status_path = Path(status_path)
+    with status_path.open("w", encoding="utf-8") as status_file:
+        status_file.write(status_payload)
+        status_file.flush()
+        os.fsync(status_file.fileno())
+
+
+def _ensure_smoke_status_file(run_dir, exit_code=None):
+    try:
+        _write_smoke_status_file(run_dir, exit_code, overwrite=False)
+    except OSError as exc:
+        logging.warning("Failed to write smoke-test status in %s: %s", run_dir, exc)
+
+
+def _coerce_smoke_status_from_metadata(run_dir):
+    metadata_path = Path(run_dir) / DEFAULT_RUN_METADATA_PATH
+    if not metadata_path.exists():
+        return
+    try:
+        with metadata_path.open("r", encoding="utf-8") as metadata_file:
+            metadata = json.load(metadata_file)
+    except (OSError, json.JSONDecodeError):
+        return
+    status = metadata.get("status")
+    if status == "completed":
+        _ensure_smoke_status_file(run_dir, exit_code=0)
+
+
+def _coerce_smoke_statuses(base_run_dir):
+    base = Path(base_run_dir)
+    if not base.exists():
+        logging.warning(
+            "Smoke-test status coercion skipped; run dir missing: %s", base
+        )
+        return 0
+    coerced = 0
+    logging.warning("Scanning for missing smoke-test status files in %s", base)
+    for run_dir in base.iterdir():
+        if not run_dir.is_dir():
+            continue
+        status_path = run_dir / "smoke_subprocess.status"
+        if status_path.exists():
+            continue
+        metadata_path = run_dir / DEFAULT_RUN_METADATA_PATH
+        if not metadata_path.exists():
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if metadata.get("status") == "completed":
+            _ensure_smoke_status_file(run_dir, exit_code=0)
+            coerced += 1
+            logging.warning("Coerced missing smoke-test status: %s", run_dir)
+    return coerced
+
+
 def _run_smoke_test_case(
     *,
     args,
@@ -349,6 +536,13 @@ def _run_smoke_test_case(
     env["PYTHONUNBUFFERED"] = "1"
     stderr_path = Path(run_dir) / "smoke_subprocess.err"
     stdout_path = Path(run_dir) / "smoke_subprocess.out"
+    env["DFTFLOW_SMOKE_STATUS_PATH"] = str(
+        Path(run_dir) / "smoke_subprocess.status"
+    )
+    env["DFTFLOW_SMOKE_HEARTBEAT_PATH"] = str(
+        Path(run_dir) / SMOKE_TEST_HEARTBEAT_FILE
+    )
+    env["DFTFLOW_SMOKE_HEARTBEAT_INTERVAL"] = str(SMOKE_TEST_HEARTBEAT_INTERVAL)
     src_dir = str(Path(__file__).resolve().parent)
     existing_pythonpath = env.get("PYTHONPATH")
     if existing_pythonpath:
@@ -369,39 +563,57 @@ def _run_smoke_test_case(
         "--run-dir",
         str(run_dir),
     ]
-    with open(stdout_path, "a", encoding="utf-8") as stdout_file, open(
-        stderr_path, "a", encoding="utf-8"
-    ) as stderr_file:
-        completed = subprocess.run(
-            command,
-            env=env,
-            cwd=os.getcwd(),
-            check=False,
-            stdout=stdout_file,
-            stderr=stderr_file,
-            start_new_session=True,
-        )
-    status_path = Path(run_dir) / "smoke_subprocess.status"
-    status_message = _format_subprocess_returncode(completed.returncode)
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    status_path.write_text(
-        f"{timestamp} exit_code={status_message}\n", encoding="utf-8"
-    )
-    return completed.returncode
+    completed = None
+    try:
+        with open(stdout_path, "a", encoding="utf-8") as stdout_file, open(
+            stderr_path, "a", encoding="utf-8"
+        ) as stderr_file:
+            completed = subprocess.run(
+                command,
+                env=env,
+                cwd=os.getcwd(),
+                check=False,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                start_new_session=True,
+            )
+    finally:
+        returncode = completed.returncode if completed else None
+        try:
+            _write_smoke_status_file(run_dir, returncode, overwrite=True)
+        except OSError as exc:
+            logging.warning(
+                "Failed to write smoke-test status in %s: %s", run_dir, exc
+            )
+    try:
+        if completed and completed.returncode == 0:
+            metadata_path = Path(run_dir) / DEFAULT_RUN_METADATA_PATH
+            if metadata_path.exists():
+                with metadata_path.open("r", encoding="utf-8") as metadata_file:
+                    metadata = json.load(metadata_file)
+                metadata["status"] = "completed"
+                with metadata_path.open("w", encoding="utf-8") as metadata_file:
+                    json.dump(metadata, metadata_file, indent=2)
+                    metadata_file.flush()
+                    os.fsync(metadata_file.fileno())
+    except (OSError, json.JSONDecodeError) as exc:
+        logging.warning("Failed to refresh smoke-test metadata in %s: %s", run_dir, exc)
+    return completed.returncode if completed else 1
 
 
-def _find_latest_smoke_log_mtime(base_run_dir):
+def _find_latest_smoke_activity_mtime(base_run_dir):
     latest = None
     for root, _dirs, files in os.walk(base_run_dir):
-        if "run.log" not in files:
-            continue
-        log_path = os.path.join(root, "run.log")
-        try:
-            mtime = os.path.getmtime(log_path)
-        except OSError:
-            continue
-        if latest is None or mtime > latest:
-            latest = mtime
+        for filename in ("run.log", SMOKE_TEST_HEARTBEAT_FILE):
+            if filename not in files:
+                continue
+            log_path = os.path.join(root, filename)
+            try:
+                mtime = os.path.getmtime(log_path)
+            except OSError:
+                continue
+            if latest is None or mtime > latest:
+                latest = mtime
     return latest
 
 
@@ -458,7 +670,7 @@ def _run_smoke_test_watch(args):
         _log_watch("Starting smoke-test run.")
         process = subprocess.Popen(cmd)
         last_activity = time.time()
-        latest = _find_latest_smoke_log_mtime(base_run_dir)
+        latest = _find_latest_smoke_activity_mtime(base_run_dir)
         if latest:
             last_activity = max(last_activity, latest)
 
@@ -482,7 +694,7 @@ def _run_smoke_test_watch(args):
                     raise SystemExit("Smoke-test watch exceeded max restarts.")
                 break
 
-            latest = _find_latest_smoke_log_mtime(base_run_dir)
+            latest = _find_latest_smoke_activity_mtime(base_run_dir)
             now = time.time()
             if latest:
                 last_activity = max(last_activity, latest)
@@ -750,6 +962,15 @@ def main():
             os.makedirs(base_run_dir, exist_ok=True)
             xyz_path = Path(base_run_dir) / "smoke_test_water.xyz"
             xyz_path.write_text(SMOKE_TEST_XYZ, encoding="utf-8")
+            logging.warning("Starting smoke-test resume scan in %s", base_run_dir)
+            coerced = _coerce_smoke_statuses(base_run_dir)
+            if coerced:
+                logging.warning(
+                    "Filled %s missing smoke-test status files from metadata.",
+                    coerced,
+                )
+            else:
+                logging.warning("No missing smoke-test status files detected.")
             total_cases = len(modes) * len(cases)
             failures = []
             case_index = 1
@@ -760,13 +981,23 @@ def main():
                     )
                     case_index += 1
                     if args.resume:
-                        status = _load_smoke_test_status(run_dir)
+                        status = _smoke_progress_status(base_run_dir, run_dir)
                         if status in ("completed", "skipped"):
                             logging.info(
                                 "Skipping completed smoke-test case: %s",
                                 run_dir,
                             )
                             continue
+                        status = _load_smoke_test_status(run_dir)
+                        if status in ("completed", "skipped"):
+                            _update_smoke_progress(base_run_dir, run_dir, status)
+                            logging.info(
+                                "Skipping completed smoke-test case: %s",
+                                run_dir,
+                            )
+                            continue
+                        if _load_smoke_test_status(run_dir) is None:
+                            _coerce_smoke_status_from_metadata(run_dir)
                     if overrides.get("skip"):
                         _write_smoke_skip_metadata(
                             run_dir,
@@ -774,11 +1005,13 @@ def main():
                             mode,
                             overrides.get("skip_reason"),
                         )
+                        _update_smoke_progress(base_run_dir, run_dir, "skipped")
                         logging.warning(
                             "Skipping smoke-test case due to unsupported dispersion: %s",
                             run_dir,
                         )
                         continue
+                    _update_smoke_progress(base_run_dir, run_dir, "running")
                     smoke_config = _build_smoke_test_config(base_config, mode, overrides)
                     smoke_config_raw = json.dumps(
                         smoke_config, indent=2, ensure_ascii=False
@@ -795,12 +1028,18 @@ def main():
                             smoke_config_raw=smoke_config_raw,
                             smoke_config=smoke_config,
                         )
+                        _ensure_smoke_status_file(run_dir, exit_code)
+                        if exit_code == 0:
+                            _update_smoke_progress(base_run_dir, run_dir, "completed")
                         if exit_code != 0:
                             raise RuntimeError(
                                 "Smoke-test subprocess exited with code "
                                 f"{_format_subprocess_returncode(exit_code)}."
                             )
                     except Exception as error:
+                        _update_smoke_progress(
+                            base_run_dir, run_dir, "failed", str(error)
+                        )
                         failures.append(
                             {
                                 "run_dir": str(run_dir),
@@ -918,7 +1157,36 @@ def main():
                     ),
                     file=sys.stderr,
                 )
-        workflow.run(args, config, config_raw, config_source_path, run_in_background)
+        smoke_status_path = os.environ.get("DFTFLOW_SMOKE_STATUS_PATH")
+        smoke_heartbeat_path = os.environ.get("DFTFLOW_SMOKE_HEARTBEAT_PATH")
+        heartbeat_interval = os.environ.get("DFTFLOW_SMOKE_HEARTBEAT_INTERVAL")
+        exit_code = 1
+        stop_heartbeat = None
+        if smoke_heartbeat_path:
+            interval = SMOKE_TEST_HEARTBEAT_INTERVAL
+            if heartbeat_interval:
+                try:
+                    interval = max(1, int(heartbeat_interval))
+                except ValueError:
+                    interval = SMOKE_TEST_HEARTBEAT_INTERVAL
+            stop_heartbeat = _start_smoke_heartbeat(smoke_heartbeat_path, interval)
+        try:
+            workflow.run(
+                args, config, config_raw, config_source_path, run_in_background
+            )
+            exit_code = 0
+        finally:
+            if stop_heartbeat:
+                stop_heartbeat.set()
+            if smoke_status_path:
+                try:
+                    _write_smoke_status_path(smoke_status_path, exit_code)
+                except OSError as exc:
+                    logging.warning(
+                        "Failed to write smoke-test status in %s: %s",
+                        smoke_status_path,
+                        exc,
+                    )
     except Exception:
         logging.exception("Run failed.")
         raise

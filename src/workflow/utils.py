@@ -147,24 +147,18 @@ def _disable_smd_solvent_settings(stage_label, solvent_name, solvent_model):
     if str(solvent_model).lower() != "smd":
         return solvent_name, solvent_model
     try:
-        import pyscf.solvent.smd  # noqa: F401
+        from pyscf.solvent import smd
     except Exception:
         smd_available = False
     else:
-        smd_available = True
+        smd_available = getattr(smd, "libsolvent", None) is not None
     if smd_available:
         return solvent_name, solvent_model
-    if solvent_name and not _is_vacuum_solvent(solvent_name):
-        logging.warning(
-            "%s stage requested SMD, but SMD is unavailable. Falling back to PCM.",
-            stage_label,
-        )
-        return solvent_name, "pcm"
-    logging.warning(
-        "%s stage requested SMD, but SMD is unavailable. Ignoring solvent model.",
-        stage_label,
+    raise ValueError(
+        "{stage} stage requested SMD, but SMD is unavailable in this PySCF build. "
+        "Install the SMD-enabled PySCF package from the DFTFlow conda channel."
+        .format(stage=stage_label)
     )
-    return solvent_name, None
 
 
 def _evaluate_irc_profile(

@@ -42,7 +42,7 @@ DFTFlow is a lightweight workflow wrapper around PySCF (SCF/DFT/gradients/Hessia
 - `pcm`: dielectric epsilon from `solvent_dielectric.json`.
 - `smd`: requires PySCF built with SMD support (see SMD packaging below).
 
-If SMD is not available, DFTFlow falls back to PCM or vacuum depending on context.
+If SMD is not available, DFTFlow stops with a clear error message.
 
 ## Dispersion
 
@@ -52,12 +52,15 @@ If SMD is not available, DFTFlow falls back to PCM or vacuum depending on contex
 
 ## Smoke test
 
-`dftflow smoke-test` runs a broad matrix of quick checks (1 SCF cycle and 1-step optimizations).
+`dftflow smoke-test` runs a matrix of quick checks (1 SCF cycle and 1-step optimizations).
 
 Default behavior:
 - Each case runs in a **separate subprocess** (isolation to avoid cascading crashes).
 - Capability check is **skipped** during smoke tests only.
 - Unsupported D3/XC combos are marked **skipped** instead of failing.
+- Defaults to `--smoke-mode quick` (representative subset). Use `--smoke-mode full` for the full matrix.
+- Progress is tracked in `smoke_progress.json` for reliable resume.
+- Heartbeat updates are written to `smoke_heartbeat.txt` for stall detection.
 
 Useful flags:
 - `--resume`: continue in an existing run directory.
@@ -67,11 +70,14 @@ Useful flags:
 - `--watch-interval <sec>`: polling interval.
 - `--watch-max-restarts <n>`: limit restarts (0 = unlimited).
 - `--no-isolate`: run all cases in the same process (not recommended).
+- `--smoke-mode <quick|full>`: choose the test matrix size.
 
 Smoke-test artifacts (per case):
 - `run.log`, `log/run_events.jsonl`
 - `smoke_subprocess.out` / `smoke_subprocess.err`
 - `smoke_subprocess.status`
+Smoke-test summary:
+- `smoke_progress.json`
 
 ## Output layout
 
