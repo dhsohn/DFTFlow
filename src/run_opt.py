@@ -89,6 +89,11 @@ def _build_smoke_test_config(base_config, mode, overrides):
     scf_config["max_cycle"] = 1
     config["scf"] = scf_config
     single_point_config = dict(config.get("single_point") or {})
+    single_point_config["basis"] = overrides["basis"]
+    single_point_config["xc"] = overrides["xc"]
+    single_point_config["solvent"] = overrides["solvent"]
+    single_point_config["solvent_model"] = overrides["solvent_model"]
+    single_point_config["dispersion"] = overrides["dispersion"]
     single_point_scf = dict(single_point_config.get("scf") or {})
     single_point_scf["max_cycle"] = 1
     single_point_config["scf"] = single_point_scf
@@ -169,6 +174,40 @@ def _smoke_progress_status(base_run_dir, run_dir):
     if not entry:
         return None
     return entry.get("status")
+
+
+def _parse_smoke_status_file(run_dir):
+    status_path = Path(run_dir) / "smoke_subprocess.status"
+    if not status_path.exists():
+        return None
+    try:
+        payload = status_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if "exit_code=" not in payload:
+        return None
+    exit_code = payload.split("exit_code=", 1)[-1].strip()
+    try:
+        return int(exit_code)
+    except ValueError:
+        return None
+
+
+def _infer_smoke_case_status(run_dir):
+    metadata_path = Path(run_dir) / DEFAULT_RUN_METADATA_PATH
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            metadata = None
+        if metadata:
+            status = metadata.get("status")
+            if status in ("completed", "failed", "skipped"):
+                return status
+    exit_code = _parse_smoke_status_file(run_dir)
+    if exit_code is None:
+        return None
+    return "completed" if exit_code == 0 else "failed"
 
 
 def _write_smoke_heartbeat(path):
@@ -981,8 +1020,18 @@ def main():
                     )
                     case_index += 1
                     if args.resume:
-                        status = _smoke_progress_status(base_run_dir, run_dir)
-                        if status in ("completed", "skipped"):
+                        inferred_status = _infer_smoke_case_status(run_dir)
+                        if inferred_status in ("completed", "skipped"):
+                            _update_smoke_progress(
+                                base_run_dir, run_dir, inferred_status
+                            )
+                            logging.info(
+                                "Skipping completed smoke-test case: %s",
+                                run_dir,
+                            )
+                            continue
+                        progress_status = _smoke_progress_status(base_run_dir, run_dir)
+                        if progress_status in ("completed", "skipped"):
                             logging.info(
                                 "Skipping completed smoke-test case: %s",
                                 run_dir,
@@ -996,7 +1045,7 @@ def main():
                                 run_dir,
                             )
                             continue
-                        if _load_smoke_test_status(run_dir) is None:
+                        if status is None:
                             _coerce_smoke_status_from_metadata(run_dir)
                     if overrides.get("skip"):
                         _write_smoke_skip_metadata(
