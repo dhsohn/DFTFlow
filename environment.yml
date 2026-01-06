@@ -26,4 +26,4 @@ dependencies:
   - dftd3-python
   - dftd4
   - pytest
-  - jsonschema
+  - pydantic

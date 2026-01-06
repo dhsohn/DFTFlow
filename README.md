@@ -128,7 +128,97 @@ Install and launch the separate `dftflow_gui` app.
 ### CLI run
 
 ```bash
-dftflow run path/to/input.xyz --config run_config.json
+dftflow run path/to/input.xyz --config run_config.yaml
+```
+
+### Config examples (YAML)
+
+YAML is the recommended format in this guide; JSON is also supported (the bundled
+`run_config.json` is a full template).
+
+Save a config with a `.yaml` extension and pass it with `--config`:
+
+```bash
+dftflow run path/to/input.xyz --config config.yaml
+```
+
+#### Example 1: Single-point energy (single experiment, YAML)
+
+```yaml
+basis: def2-svp
+xc: b3lyp
+solvent: vacuum
+calculation_mode: single_point
+```
+
+#### Example 2: Optimization -> frequency -> single-point (3-step workflow, YAML)
+
+```yaml
+basis: def2-svp
+xc: b3lyp
+solvent: water
+solvent_model: pcm
+dispersion: d3bj
+calculation_mode: optimization
+frequency_enabled: true
+
+single_point:
+  basis: def2-tzvp
+  xc: b3lyp
+  dispersion: d3bj
+```
+
+#### Example 3: TS optimization -> frequency -> IRC (3-step workflow, YAML)
+
+```yaml
+basis: def2-svp
+xc: b3lyp
+solvent: vacuum
+calculation_mode: optimization
+frequency_enabled: true
+single_point_enabled: false
+irc_enabled: true
+
+optimizer:
+  mode: transition_state
+
+irc:
+  steps: 20
+  step_size: 0.05
+  force_threshold: 0.02
+```
+
+#### Example 4: Frequency-only + thermochemistry (single experiment, YAML)
+
+```yaml
+basis: def2-svp
+xc: b3lyp
+solvent: vacuum
+calculation_mode: frequency
+
+thermo:
+  T: 298.15
+  P: 1.0
+  unit: atm
+```
+
+#### Example 5: 1D relaxed bond scan (single experiment, YAML)
+
+```yaml
+basis: def2-svp
+xc: b3lyp
+solvent: vacuum
+calculation_mode: scan
+
+scan:
+  mode: optimization
+  dimensions:
+    - type: bond
+      i: 0
+      j: 1
+      start: 1.0
+      end: 2.0
+      step: 0.1
 ```
 
 ### Resume a run
@@ -143,7 +233,7 @@ dftflow run --resume ~/DFTFlow/runs/2026-01-03_100104/0147_optimization_...
 dftflow status runs/2026-01-03_100104/0147_optimization_...
 dftflow status --recent 5
 dftflow doctor
-dftflow validate-config run_config.json
+dftflow validate-config run_config.yaml
 ```
 
 ### Queue
@@ -160,7 +250,7 @@ dftflow queue prune --keep-days 30
 
 ### Reproducibility checklist
 
-- Keep your `run_config.json` under version control; run `dftflow validate-config` before production runs.
+- Keep your config file (e.g., `run_config.yaml`) under version control; run `dftflow validate-config` before production runs.
 - Each run writes `config_used.json` and `metadata.json` in the run directory for exact inputs and run context.
 - Use `--run-dir` and `--run-id` to make runs traceable in notebooks, tickets, or LIMS.
 - Capture the conda environment (`conda list --explicit` or `conda env export --no-builds`) and store it alongside the run.

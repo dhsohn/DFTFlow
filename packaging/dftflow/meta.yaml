@@ -9,7 +9,7 @@ source:
   path: ../..
 
 build:
-  number: 20
+  number: 21
   noarch: python
 
 requirements:
@@ -23,9 +23,9 @@ requirements:
     - dftd3-python
     - dftd4
     - h5py
-    - jsonschema >=4.18
     - basis-set-exchange
     - numpy
+    - pydantic >=2.0
     - pyscf * smd_py*
     - pyyaml >=6.0
     - sella

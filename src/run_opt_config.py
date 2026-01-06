@@ -5,10 +5,9 @@ import tomllib
 from pathlib import Path
 from importlib import resources
 from importlib.resources.abc import Traversable
-from dataclasses import dataclass
 from typing import Any, Mapping
 
-from jsonschema import Draft7Validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 import yaml
 
 from run_opt_paths import get_app_base_dir, get_runs_base_dir
@@ -56,332 +55,6 @@ DEFAULT_QUEUE_RUNNER_LOCK_PATH = os.path.join(DEFAULT_RUNS_BASE_DIR, "queue.runn
 DEFAULT_QUEUE_RUNNER_LOG_PATH = os.path.join(
     DEFAULT_APP_BASE_DIR, "log", "queue_runner.log"
 )
-
-SCAN_DIMENSION_SCHEMA = {
-    "type": "object",
-    "required": ["type"],
-    "properties": {
-        "type": {"type": "string", "enum": ["bond", "angle", "dihedral"]},
-        "i": {"type": "integer", "minimum": 0},
-        "j": {"type": "integer", "minimum": 0},
-        "k": {"type": "integer", "minimum": 0},
-        "l": {"type": "integer", "minimum": 0},
-        "start": {"type": ["number", "integer"]},
-        "end": {"type": ["number", "integer"]},
-        "step": {"type": ["number", "integer"]},
-    },
-    "additionalProperties": True,
-}
-
-TS_INTERNAL_COORDINATE_SCHEMA = {
-    "type": "object",
-    "required": ["type", "i", "j"],
-    "properties": {
-        "type": {"type": "string", "enum": ["bond", "angle", "dihedral"]},
-        "i": {"type": "integer", "minimum": 0},
-        "j": {"type": "integer", "minimum": 0},
-        "k": {"type": "integer", "minimum": 0},
-        "l": {"type": "integer", "minimum": 0},
-        "target": {"type": ["number", "integer", "null"]},
-        "direction": {"type": ["string", "null"], "enum": ["increase", "decrease", None]},
-        "tolerance": {"type": ["number", "integer", "null"], "minimum": 0},
-        "label": {"type": ["string", "null"]},
-    },
-    "additionalProperties": True,
-}
-
-RUN_CONFIG_SCHEMA = {
-    "type": "object",
-    "required": ["basis", "xc", "solvent"],
-    "properties": {
-        "threads": {"type": ["integer", "null"], "minimum": 1},
-        "memory_gb": {
-            "type": ["number", "integer", "null"],
-            "exclusiveMinimum": 0,
-        },
-        "basis": {"type": "string", "minLength": 1},
-        "xc": {"type": "string", "minLength": 1},
-        "solvent": {"type": "string", "minLength": 1},
-        "solvent_model": {"type": ["string", "null"], "enum": ["pcm", "smd", None]},
-        "dispersion": {"type": ["string", "null"], "enum": ["d3bj", "d3zero", "d4", None]},
-        "calculation_mode": {
-            "type": "string",
-            "enum": ["optimization", "single_point", "frequency", "irc", "scan"],
-        },
-        "irc_enabled": {"type": ["boolean", "null"]},
-        "irc_file": {"type": ["string", "null"]},
-        "irc_profile_csv_file": {"type": ["string", "null"]},
-        "scan_result_csv_file": {"type": ["string", "null"]},
-        "qcschema_output_file": {"type": ["string", "null"]},
-        "irc": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "steps": {"type": ["integer", "null"], "minimum": 1},
-                "step_size": {
-                    "type": ["number", "integer", "null"],
-                    "exclusiveMinimum": 0,
-                },
-                "force_threshold": {
-                    "type": ["number", "integer", "null"],
-                    "exclusiveMinimum": 0,
-                },
-            },
-            "additionalProperties": True,
-        },
-        "optimizer": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "output_xyz": {"type": ["string", "null"]},
-                "mode": {"type": ["string", "null"]},
-                "ase": {
-                    "type": ["object", "null"],
-                    "required": [],
-                    "properties": {
-                        "d3_backend": {
-                            "type": ["string", "null"],
-                            "enum": ["dftd3", None],
-                        },
-                        "dftd3_backend": {
-                            "type": ["string", "null"],
-                            "enum": ["dftd3", None],
-                        },
-                        "d3_params": {"type": ["object", "null"]},
-                        "dftd3_params": {"type": ["object", "null"]},
-                        "optimizer": {"type": ["string", "null"]},
-                        "fmax": {"type": ["number", "integer", "null"]},
-                        "steps": {"type": ["integer", "null"]},
-                        "trajectory": {"type": ["string", "null"]},
-                        "logfile": {"type": ["string", "null"]},
-                        "sella": {"type": ["object", "null"]},
-                    },
-                    "additionalProperties": True,
-                },
-            },
-            "additionalProperties": True,
-        },
-        "scf": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "max_cycle": {"type": ["integer", "null"]},
-                "conv_tol": {"type": ["number", "integer", "null"]},
-                "level_shift": {"type": ["number", "integer", "null"]},
-                "damping": {"type": ["number", "integer", "null"]},
-                "diis": {"type": ["boolean", "integer", "null"]},
-                "chkfile": {"type": ["string", "null"]},
-                "force_restricted": {"type": ["boolean", "null"]},
-                "force_unrestricted": {"type": ["boolean", "null"]},
-                "extra": {"type": ["object", "null"]},
-            },
-            "additionalProperties": True,
-        },
-        "single_point": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "basis": {"type": ["string", "null"]},
-                "xc": {"type": ["string", "null"]},
-                "solvent": {"type": ["string", "null"]},
-                "solvent_model": {"type": ["string", "null"]},
-                "solvent_map": {"type": ["string", "null"]},
-                "dispersion": {"type": ["string", "null"]},
-                "scf": {
-                    "type": ["object", "null"],
-                    "required": [],
-                    "properties": {
-                        "max_cycle": {"type": ["integer", "null"]},
-                        "conv_tol": {"type": ["number", "integer", "null"]},
-                        "level_shift": {"type": ["number", "integer", "null"]},
-                        "damping": {"type": ["number", "integer", "null"]},
-                        "diis": {"type": ["boolean", "integer", "null"]},
-                        "chkfile": {"type": ["string", "null"]},
-                        "force_restricted": {"type": ["boolean", "null"]},
-                        "force_unrestricted": {"type": ["boolean", "null"]},
-                        "extra": {"type": ["object", "null"]},
-                    },
-                    "additionalProperties": True,
-                },
-            },
-            "additionalProperties": True,
-        },
-        "frequency": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "dispersion": {"type": ["string", "null"]},
-                "dispersion_model": {"type": ["string", "null"]},
-            },
-            "additionalProperties": True,
-        },
-        "freq": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "dispersion": {"type": ["string", "null"]},
-                "dispersion_model": {"type": ["string", "null"]},
-            },
-            "additionalProperties": True,
-        },
-        "thermo": {
-            "type": "object",
-            "required": ["T", "P", "unit"],
-            "properties": {
-                "T": {"type": ["number", "integer"]},
-                "P": {"type": ["number", "integer"]},
-                "unit": {"type": "string", "enum": ["atm", "bar", "Pa"]},
-            },
-        },
-        "constraints": {
-            "type": ["object", "null"],
-            "properties": {
-                "bonds": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["i", "j", "length"],
-                        "properties": {
-                            "i": {"type": "integer", "minimum": 0},
-                            "j": {"type": "integer", "minimum": 0},
-                            "length": {
-                                "type": ["number", "integer"],
-                                "exclusiveMinimum": 0,
-                            },
-                        },
-                        "additionalProperties": False,
-                    },
-                },
-                "angles": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["i", "j", "k", "angle"],
-                        "properties": {
-                            "i": {"type": "integer", "minimum": 0},
-                            "j": {"type": "integer", "minimum": 0},
-                            "k": {"type": "integer", "minimum": 0},
-                            "angle": {
-                                "type": ["number", "integer"],
-                                "minimum": 0,
-                                "maximum": 180,
-                            },
-                        },
-                        "additionalProperties": False,
-                    },
-                },
-                "dihedrals": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["i", "j", "k", "l", "dihedral"],
-                        "properties": {
-                            "i": {"type": "integer", "minimum": 0},
-                            "j": {"type": "integer", "minimum": 0},
-                            "k": {"type": "integer", "minimum": 0},
-                            "l": {"type": "integer", "minimum": 0},
-                            "dihedral": {
-                                "type": ["number", "integer"],
-                                "minimum": -180,
-                                "maximum": 180,
-                            },
-                        },
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "additionalProperties": False,
-        },
-        "scan": {
-            "type": ["object", "null"],
-            "properties": {
-                "type": {"type": "string", "enum": ["bond", "angle", "dihedral"]},
-                "i": {"type": "integer", "minimum": 0},
-                "j": {"type": "integer", "minimum": 0},
-                "k": {"type": "integer", "minimum": 0},
-                "l": {"type": "integer", "minimum": 0},
-                "start": {"type": ["number", "integer"]},
-                "end": {"type": ["number", "integer"]},
-                "step": {"type": ["number", "integer"]},
-                "mode": {"type": "string", "enum": ["optimization", "single_point"]},
-                "executor": {
-                    "type": "string",
-                    "enum": ["serial", "local", "manifest"],
-                },
-                "max_workers": {"type": ["integer", "null"], "minimum": 1},
-                "manifest_file": {"type": ["string", "null"]},
-                "dimensions": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": SCAN_DIMENSION_SCHEMA,
-                },
-                "grid": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {"type": ["number", "integer"]},
-                    },
-                },
-            },
-            "additionalProperties": True,
-        },
-        "scan2d": {
-            "type": ["object", "null"],
-            "properties": {
-                "mode": {"type": "string", "enum": ["optimization", "single_point"]},
-                "executor": {
-                    "type": "string",
-                    "enum": ["serial", "local", "manifest"],
-                },
-                "max_workers": {"type": ["integer", "null"], "minimum": 1},
-                "manifest_file": {"type": ["string", "null"]},
-                "dimensions": {
-                    "type": "array",
-                    "minItems": 2,
-                    "maxItems": 2,
-                    "items": SCAN_DIMENSION_SCHEMA,
-                },
-                "grid": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {"type": ["number", "integer"]},
-                    },
-                },
-            },
-            "additionalProperties": True,
-        },
-        "ts_quality": {
-            "type": ["object", "null"],
-            "required": [],
-            "properties": {
-                "expected_imaginary_count": {"type": ["integer", "null"], "minimum": 0},
-                "imaginary_frequency_min_abs": {
-                    "type": ["number", "integer", "null"],
-                    "minimum": 0,
-                },
-                "imaginary_frequency_max_abs": {
-                    "type": ["number", "integer", "null"],
-                    "minimum": 0,
-                },
-                "projection_step": {
-                    "type": ["number", "integer", "null"],
-                    "exclusiveMinimum": 0,
-                },
-                "projection_min_abs": {
-                    "type": ["number", "integer", "null"],
-                    "minimum": 0,
-                },
-                "internal_coordinates": {
-                    "type": "array",
-                    "items": TS_INTERNAL_COORDINATE_SCHEMA,
-                },
-            },
-            "additionalProperties": True,
-        },
-    },
-    "additionalProperties": True,
-}
 
 RUN_CONFIG_EXAMPLES = {
     "threads": "\"threads\": 4",
@@ -433,44 +106,45 @@ RUN_CONFIG_EXAMPLES = {
     ),
 }
 
+def _ensure_dict(data: Mapping[str, Any] | None, label: str) -> dict[str, Any] | None:
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        raise ValueError(f"Config '{label}' must be an object.")
+    return dict(data)
 
-@dataclass(frozen=True)
-class SCFConfig:
-    raw: dict[str, Any]
+
+class ConfigModel(BaseModel):
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump(by_alias=True, exclude_unset=True)
+
+    @property
+    def raw(self) -> dict[str, Any]:
+        return self.to_dict()
+
+
+class SCFConfig(ConfigModel):
     max_cycle: int | None = None
     conv_tol: float | None = None
     level_shift: float | None = None
     damping: float | None = None
     diis: bool | int | None = None
+    chkfile: str | None = None
     force_restricted: bool | None = None
     force_unrestricted: bool | None = None
     extra: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "SCFConfig | None":
+        data = _ensure_dict(data, "scf")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'scf' must be an object.")
-        return cls(
-            raw=dict(data),
-            max_cycle=data.get("max_cycle"),
-            conv_tol=data.get("conv_tol"),
-            level_shift=data.get("level_shift"),
-            damping=data.get("damping"),
-            diis=data.get("diis"),
-            force_restricted=data.get("force_restricted"),
-            force_unrestricted=data.get("force_unrestricted"),
-            extra=data.get("extra"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class OptimizerASEConfig:
-    raw: dict[str, Any]
+class OptimizerASEConfig(ConfigModel):
     d3_backend: str | None = None
     dftd3_backend: str | None = None
     d3_params: dict[str, Any] | None = None
@@ -484,55 +158,26 @@ class OptimizerASEConfig:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "OptimizerASEConfig | None":
+        data = _ensure_dict(data, "optimizer.ase")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'optimizer.ase' must be an object.")
-        return cls(
-            raw=dict(data),
-            d3_backend=data.get("d3_backend"),
-            dftd3_backend=data.get("dftd3_backend"),
-            d3_params=data.get("d3_params"),
-            dftd3_params=data.get("dftd3_params"),
-            optimizer=data.get("optimizer"),
-            fmax=data.get("fmax"),
-            steps=data.get("steps"),
-            trajectory=data.get("trajectory"),
-            logfile=data.get("logfile"),
-            sella=data.get("sella"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class OptimizerConfig:
-    raw: dict[str, Any]
+class OptimizerConfig(ConfigModel):
     output_xyz: str | None = None
     mode: str | None = None
     ase: OptimizerASEConfig | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "OptimizerConfig | None":
+        data = _ensure_dict(data, "optimizer")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'optimizer' must be an object.")
-        return cls(
-            raw=dict(data),
-            output_xyz=data.get("output_xyz"),
-            mode=data.get("mode"),
-            ase=OptimizerASEConfig.from_dict(data.get("ase")),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class SinglePointConfig:
-    raw: dict[str, Any]
+class SinglePointConfig(ConfigModel):
     basis: str | None = None
     xc: str | None = None
     solvent: str | None = None
@@ -543,74 +188,38 @@ class SinglePointConfig:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "SinglePointConfig | None":
+        data = _ensure_dict(data, "single_point")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'single_point' must be an object.")
-        return cls(
-            raw=dict(data),
-            basis=data.get("basis"),
-            xc=data.get("xc"),
-            solvent=data.get("solvent"),
-            solvent_model=data.get("solvent_model"),
-            solvent_map=data.get("solvent_map"),
-            dispersion=data.get("dispersion"),
-            scf=SCFConfig.from_dict(data.get("scf")),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class FrequencyConfig:
-    raw: dict[str, Any]
+class FrequencyConfig(ConfigModel):
     dispersion: str | None = None
     dispersion_model: str | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "FrequencyConfig | None":
+        data = _ensure_dict(data, "frequency")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'frequency' must be an object.")
-        return cls(
-            raw=dict(data),
-            dispersion=data.get("dispersion"),
-            dispersion_model=data.get("dispersion_model"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class IrcConfig:
-    raw: dict[str, Any]
+class IrcConfig(ConfigModel):
     steps: int | None = None
     step_size: float | None = None
     force_threshold: float | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "IrcConfig | None":
+        data = _ensure_dict(data, "irc")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'irc' must be an object.")
-        return cls(
-            raw=dict(data),
-            steps=data.get("steps"),
-            step_size=data.get("step_size"),
-            force_threshold=data.get("force_threshold"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class TSQualityConfig:
-    raw: dict[str, Any]
+class TSQualityConfig(ConfigModel):
     expected_imaginary_count: int | None = None
     imaginary_frequency_min_abs: float | None = None
     imaginary_frequency_max_abs: float | None = None
@@ -620,51 +229,26 @@ class TSQualityConfig:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "TSQualityConfig | None":
+        data = _ensure_dict(data, "ts_quality")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'ts_quality' must be an object.")
-        return cls(
-            raw=dict(data),
-            expected_imaginary_count=data.get("expected_imaginary_count"),
-            imaginary_frequency_min_abs=data.get("imaginary_frequency_min_abs"),
-            imaginary_frequency_max_abs=data.get("imaginary_frequency_max_abs"),
-            projection_step=data.get("projection_step"),
-            projection_min_abs=data.get("projection_min_abs"),
-            internal_coordinates=data.get("internal_coordinates"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class ThermoConfig:
-    raw: dict[str, Any]
-    temperature: float | None = None
-    pressure: float | None = None
+class ThermoConfig(ConfigModel):
+    temperature: float | None = Field(default=None, alias="T")
+    pressure: float | None = Field(default=None, alias="P")
     unit: str | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "ThermoConfig | None":
+        data = _ensure_dict(data, "thermo")
         if data is None:
             return None
-        if not isinstance(data, dict):
-            raise ValueError("Config 'thermo' must be an object.")
-        return cls(
-            raw=dict(data),
-            temperature=data.get("T"),
-            pressure=data.get("P"),
-            unit=data.get("unit"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
-@dataclass(frozen=True)
-class RunConfig:
-    raw: dict[str, Any]
+class RunConfig(ConfigModel):
     threads: int | None = None
     memory_gb: float | None = None
     basis: str | None = None
@@ -691,7 +275,11 @@ class RunConfig:
     optimizer: OptimizerConfig | None = None
     scf: SCFConfig | None = None
     single_point: SinglePointConfig | None = None
-    frequency: FrequencyConfig | None = None
+    frequency: FrequencyConfig | None = Field(
+        default=None,
+        validation_alias=AliasChoices("frequency", "freq"),
+        serialization_alias="frequency",
+    )
     irc: IrcConfig | None = None
     ts_quality: TSQualityConfig | None = None
     thermo: ThermoConfig | None = None
@@ -703,48 +291,7 @@ class RunConfig:
     def from_dict(cls, data: Mapping[str, Any]) -> "RunConfig":
         if not isinstance(data, dict):
             raise ValueError("Config must be an object/mapping.")
-        frequency_block = data.get("frequency")
-        if not frequency_block:
-            frequency_block = data.get("freq")
-        return cls(
-            raw=dict(data),
-            threads=data.get("threads"),
-            memory_gb=data.get("memory_gb"),
-            basis=data.get("basis"),
-            xc=data.get("xc"),
-            solvent=data.get("solvent"),
-            solvent_model=data.get("solvent_model"),
-            dispersion=data.get("dispersion"),
-            calculation_mode=data.get("calculation_mode"),
-            enforce_os_memory_limit=data.get("enforce_os_memory_limit"),
-            verbose=data.get("verbose"),
-            single_point_enabled=data.get("single_point_enabled"),
-            frequency_enabled=data.get("frequency_enabled"),
-            irc_enabled=data.get("irc_enabled"),
-            log_file=data.get("log_file"),
-            event_log_file=data.get("event_log_file"),
-            optimized_xyz_file=data.get("optimized_xyz_file"),
-            run_metadata_file=data.get("run_metadata_file"),
-            qcschema_output_file=data.get("qcschema_output_file"),
-            frequency_file=data.get("frequency_file"),
-            irc_file=data.get("irc_file"),
-            irc_profile_csv_file=data.get("irc_profile_csv_file"),
-            scan_result_csv_file=data.get("scan_result_csv_file"),
-            solvent_map=data.get("solvent_map"),
-            optimizer=OptimizerConfig.from_dict(data.get("optimizer")),
-            scf=SCFConfig.from_dict(data.get("scf")),
-            single_point=SinglePointConfig.from_dict(data.get("single_point")),
-            frequency=FrequencyConfig.from_dict(frequency_block),
-            irc=IrcConfig.from_dict(data.get("irc")),
-            ts_quality=TSQualityConfig.from_dict(data.get("ts_quality")),
-            thermo=ThermoConfig.from_dict(data.get("thermo")),
-            constraints=data.get("constraints"),
-            scan=data.get("scan"),
-            scan2d=data.get("scan2d"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self.raw)
+        return cls.model_validate(data)
 
 
 def load_run_config(config_path):
@@ -930,44 +477,9 @@ def _schema_example_for_path(path):
     return RUN_CONFIG_EXAMPLES.get(leaf, "See run_config.json for a complete example.")
 
 
-def _format_schema_error(error):
-    path = ".".join(str(part) for part in error.absolute_path)
-    if error.validator == "required":
-        missing = None
-        if isinstance(error.params, dict):
-            missing = error.params.get("required")
-        if isinstance(missing, (list, tuple)):
-            missing = missing[0] if missing else None
-        if not missing:
-            match = re.search(r"'(.+?)' is a required property", error.message)
-            if match:
-                missing = match.group(1)
-        key_path = f"{path}.{missing}" if path and missing else (missing or path or "(root)")
-        cause = "Missing required key."
-        example = _schema_example_for_path(missing or path)
-    elif error.validator == "enum":
-        key_path = path or "(root)"
-        allowed_values = ", ".join(repr(value) for value in error.validator_value)
-        cause = f"Invalid value. Allowed values: {allowed_values}."
-        example = _schema_example_for_path(path)
-    else:
-        key_path = path or "(root)"
-        cause = error.message
-        example = _schema_example_for_path(path)
-    return f"Config schema error at '{key_path}': {cause} Example: {example}"
-
-
-def _validate_schema(config):
-    validator = Draft7Validator(RUN_CONFIG_SCHEMA)
-    errors = sorted(validator.iter_errors(config), key=lambda error: list(error.absolute_path))
-    if errors:
-        raise ValueError(_format_schema_error(errors[0]))
-
-
 def validate_run_config(config):
     if not isinstance(config, dict):
         raise ValueError("Config must be an object/mapping.")
-    _validate_schema(config)
 
     def is_int(value):
         return isinstance(value, int) and not isinstance(value, bool)
@@ -1184,6 +696,7 @@ def validate_run_config(config):
         "enforce_os_memory_limit": (is_bool, "Config '{name}' must be a boolean."),
         "verbose": (is_bool, "Config '{name}' must be a boolean."),
         "single_point_enabled": (is_bool, "Config '{name}' must be a boolean."),
+        "frequency_enabled": (is_bool, "Config '{name}' must be a boolean."),
         "irc_enabled": (is_bool, "Config '{name}' must be a boolean."),
         "calculation_mode": (is_str, "Config '{name}' must be a string."),
         "log_file": (is_str, "Config '{name}' must be a string path."),
@@ -1203,22 +716,37 @@ def validate_run_config(config):
         "dispersion": (is_str, "Config '{name}' must be a string."),
     }
     _validate_fields(config, validation_rules)
-    for required_key, example_value in (
-        ("basis", '"def2-svp"'),
-        ("xc", '"b3lyp"'),
-    ):
+    for required_key in ("basis", "xc", "solvent"):
         if config.get(required_key) in (None, ""):
             raise ValueError(
                 "Config '{name}' is required. Example: {example}.".format(
                     name=required_key,
-                    example=f"\"{required_key}\": {example_value}",
+                    example=_schema_example_for_path(required_key),
                 )
             )
+    calculation_mode = config.get("calculation_mode")
+    if calculation_mode is not None:
+        allowed_modes = ("optimization", "single_point", "frequency", "irc", "scan")
+        if calculation_mode not in allowed_modes:
+            allowed_values = ", ".join(allowed_modes)
+            raise ValueError(
+                "Config 'calculation_mode' must be one of: {values}. "
+                "Example: {example}.".format(
+                    values=allowed_values,
+                    example=_schema_example_for_path("calculation_mode"),
+                )
+            )
+    dispersion = config.get("dispersion")
+    if dispersion is not None and dispersion not in ("d3bj", "d3zero", "d4"):
+        raise ValueError(
+            "Config 'dispersion' must be one of: d3bj, d3zero, d4. "
+            "Example: {example}.".format(example=_schema_example_for_path("dispersion"))
+        )
     solvent_model = config.get("solvent_model")
     if solvent_model:
         if not isinstance(solvent_model, str):
             raise ValueError("Config 'solvent_model' must be a string.")
-        if solvent_model.lower() not in ("pcm", "smd"):
+        if solvent_model not in ("pcm", "smd"):
             raise ValueError(
                 "Config 'solvent_model' must be one of: pcm, smd. "
                 "Example: \"solvent_model\": \"pcm\"."
@@ -1249,7 +777,7 @@ def validate_run_config(config):
                     raise ValueError(
                         f"Config 'optimizer.ase.{backend_key}' must be a string."
                     )
-                if backend_value.strip().lower() != "dftd3":
+                if backend_value != "dftd3":
                     raise ValueError(
                         "Config 'optimizer.ase.{name}' must be 'dftd3'.".format(
                             name=backend_key
