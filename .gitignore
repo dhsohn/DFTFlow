@@ -2,5 +2,6 @@ pytest.ini
 
 .DS_Store
 __pycache__/
+.conda-bld/
 runs/
 tests/__pycache__/
