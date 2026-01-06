@@ -408,6 +408,9 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             freq_dispersion_mode = _normalize_frequency_dispersion_mode(
                 frequency_config.dispersion if frequency_config else None
             )
+            freq_dispersion_step = None
+            if frequency_config and frequency_config.dispersion_step is not None:
+                freq_dispersion_step = frequency_config.dispersion_step
             if frequency_config and "dispersion_model" in frequency_config.raw:
                 freq_dispersion_raw = frequency_config.dispersion_model
             else:
@@ -421,6 +424,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
             )
             context["freq_dispersion_mode"] = freq_dispersion_mode
             context["freq_dispersion_model"] = freq_dispersion_model
+            context["freq_dispersion_step"] = freq_dispersion_step
 
             if calculation_mode == "scan":
                 run_scan_stage(
@@ -636,6 +640,7 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     "calc_eps": calc_eps,
                     "calc_dispersion_model": calc_dispersion_model,
                     "freq_dispersion_mode": freq_dispersion_mode,
+                    "freq_dispersion_step": context.get("freq_dispersion_step"),
                     "thermo": context["thermo"],
                     "ts_quality": context.get("ts_quality"),
                     "verbose": verbose,

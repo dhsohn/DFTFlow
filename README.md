@@ -34,7 +34,9 @@ to the machine where runs are submitted.
 
 ### Frequency analysis
 - Hessian via PySCF; harmonic analysis.
-- Default: **no dispersion in Hessian** (frequency dispersion mode = `none`).
+- Default: **numerical dispersion Hessian** (`frequency.dispersion: numerical`) so the
+  vibrational analysis aligns with the dispersion-corrected PES. Use
+  `frequency.dispersion: none` for faster runs.
 
 ### IRC
 - IRC path from a TS; forward/reverse trajectories with energy profile.
@@ -296,7 +298,9 @@ dftflow queue prune --keep-days 30
   - Example: `charge=0 multiplicity=1`
 - If omitted, multiplicity is inferred from electron parity.
 - `solvent_dielectric.json` provides PCM epsilon map.
-- `frequency_dispersion_mode` defaults to `none`.
+- `frequency.dispersion` defaults to `numerical` (finite-difference dispersion Hessian).
+  Use `frequency.dispersion: none` to skip it.
+- `frequency.dispersion_step` (Angstrom) controls the numerical step size (default 0.005).
 - SCF checkpoints default to `scf.chk` in the run directory for faster restarts.
 - SCF checkpoints are reused across optimization → frequency/single-point and scan points (set `chkfile: null` to disable).
 

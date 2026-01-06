@@ -58,6 +58,7 @@ class RunContext(TypedDict):
     sp_eps: NotRequired[float | None]
     freq_dispersion_mode: NotRequired[str]
     freq_dispersion_model: NotRequired[str | None]
+    freq_dispersion_step: NotRequired[float | None]
 
 
 class MoleculeContext(TypedDict):

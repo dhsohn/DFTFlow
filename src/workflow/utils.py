@@ -154,12 +154,20 @@ def _thermochemistry_payload(thermo_config, thermochemistry):
 
 def _normalize_frequency_dispersion_mode(mode_value):
     if mode_value is None:
-        return "none"
+        return "numerical"
     normalized = re.sub(r"[\s_\-]+", "", str(mode_value)).lower()
     if normalized in ("none", "no", "off", "false"):
         return "none"
+    if normalized in (
+        "numerical",
+        "numeric",
+        "fd",
+        "finite",
+        "finitedifference",
+    ):
+        return "numerical"
     raise ValueError(
-        "Unsupported frequency dispersion mode '{value}'. Use 'none'.".format(
+        "Unsupported frequency dispersion mode '{value}'. Use 'numerical' or 'none'.".format(
             value=mode_value
         )
     )

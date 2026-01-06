@@ -40,3 +40,26 @@ def test_run_config_does_not_include_d3_command():
         config = json.load(config_file)
 
     assert not _has_key(config, "d3_command")
+
+
+def test_frequency_dispersion_numerical_allowed():
+    config = {
+        "basis": "def2-svp",
+        "xc": "b3lyp",
+        "solvent": "vacuum",
+        "frequency": {"dispersion": "numerical", "dispersion_step": 0.01},
+    }
+
+    validate_run_config(config)
+
+
+def test_frequency_dispersion_step_requires_positive_value():
+    config = {
+        "basis": "def2-svp",
+        "xc": "b3lyp",
+        "solvent": "vacuum",
+        "frequency": {"dispersion_step": 0},
+    }
+
+    with pytest.raises(ValueError):
+        validate_run_config(config)

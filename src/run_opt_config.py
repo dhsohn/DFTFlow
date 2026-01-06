@@ -85,8 +85,9 @@ RUN_CONFIG_EXAMPLES = {
         "\"scf\": {\"max_cycle\": 200, \"conv_tol\": 1e-7, \"diis\": 8, "
         "\"chkfile\": \"scf.chk\", \"extra\": {\"density_fit\": true}}"
     ),
-    "frequency": "\"frequency\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
-    "freq": "\"freq\": {\"dispersion\": \"d3bj\", \"dispersion_model\": \"d3bj\"}",
+    "frequency": "\"frequency\": {\"dispersion\": \"numerical\", \"dispersion_model\": \"d3bj\"}",
+    "freq": "\"freq\": {\"dispersion\": \"numerical\", \"dispersion_model\": \"d3bj\"}",
+    "frequency.dispersion_step": "\"frequency\": {\"dispersion_step\": 0.005}",
     "thermo": "\"thermo\": {\"T\": 298.15, \"P\": 1.0, \"unit\": \"atm\"}",
     "constraints": (
         "\"constraints\": {\"bonds\": [{\"i\": 0, \"j\": 1, \"length\": 1.10}], "
@@ -197,6 +198,7 @@ class SinglePointConfig(ConfigModel):
 class FrequencyConfig(ConfigModel):
     dispersion: str | None = None
     dispersion_model: str | None = None
+    dispersion_step: float | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None) -> "FrequencyConfig | None":
@@ -907,6 +909,10 @@ def validate_run_config(config):
             frequency_rules = {
                 "dispersion": (is_str, "Config '{name}' must be a string."),
                 "dispersion_model": (is_str, "Config '{name}' must be a string."),
+                "dispersion_step": (
+                    is_positive_number,
+                    "Config '{name}' must be a positive number.",
+                ),
             }
             _validate_fields(config[frequency_key], frequency_rules, prefix=f"{frequency_key}.")
     if "ts_quality" in config and config["ts_quality"] is not None:

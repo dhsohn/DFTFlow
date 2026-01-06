@@ -215,6 +215,9 @@ def run_optimization_stage(
         "dispersion": dispersion_model,
         "dispersion_info": context["dispersion_info"],
         "frequency_dispersion_mode": context["freq_dispersion_mode"] if frequency_enabled else None,
+        "frequency_dispersion_step": context.get("freq_dispersion_step")
+        if frequency_enabled
+        else None,
         "optimizer": {
             "mode": optimizer_mode,
             "output_xyz": optimizer_config.output_xyz if optimizer_config else None,
@@ -232,6 +235,9 @@ def run_optimization_stage(
             "solvent_map": context["sp_solvent_map_path"],
             "dispersion": context["sp_dispersion_model"],
             "frequency_dispersion_mode": context["freq_dispersion_mode"]
+            if frequency_enabled
+            else None,
+            "frequency_dispersion_step": context.get("freq_dispersion_step")
             if frequency_enabled
             else None,
         },
@@ -497,6 +503,7 @@ def run_optimization_stage(
                 context["sp_eps"],
                 context["freq_dispersion_model"],
                 context["freq_dispersion_mode"],
+                context.get("freq_dispersion_step"),
                 context["thermo"],
                 verbose,
                 memory_mb,
@@ -539,6 +546,7 @@ def run_optimization_stage(
                 "solvent_eps": context["sp_eps"],
                 "dispersion": context["freq_dispersion_model"],
                 "dispersion_mode": context["freq_dispersion_mode"],
+                "dispersion_step": context.get("freq_dispersion_step"),
                 "thermochemistry": _thermochemistry_payload(
                     context["thermo"], frequency_result.get("thermochemistry")
                 ),
@@ -566,6 +574,7 @@ def run_optimization_stage(
                 "solvent_eps": context["sp_eps"],
                 "dispersion": context["freq_dispersion_model"],
                 "dispersion_mode": context["freq_dispersion_mode"],
+                "dispersion_step": context.get("freq_dispersion_step"),
                 "thermochemistry": _thermochemistry_payload(context["thermo"], None),
                 "results": None,
                 "error": str(exc),
@@ -581,6 +590,7 @@ def run_optimization_stage(
             "reason": "Frequency calculation disabled.",
             "units": _frequency_units(),
             "versions": _frequency_versions(),
+            "dispersion_step": context.get("freq_dispersion_step"),
             "thermochemistry": _thermochemistry_payload(context["thermo"], None),
             "results": None,
         }

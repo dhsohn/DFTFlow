@@ -28,6 +28,7 @@ def run_frequency_stage(stage_context, queue_update_fn):
             stage_context["calc_eps"],
             stage_context["calc_dispersion_model"],
             stage_context["freq_dispersion_mode"],
+            stage_context.get("freq_dispersion_step"),
             stage_context["thermo"],
             stage_context["verbose"],
             stage_context["memory_mb"],
@@ -68,6 +69,7 @@ def run_frequency_stage(stage_context, queue_update_fn):
             "solvent_eps": stage_context["calc_eps"],
             "dispersion": stage_context["calc_dispersion_model"],
             "dispersion_mode": stage_context["freq_dispersion_mode"],
+            "dispersion_step": stage_context.get("freq_dispersion_step"),
             "thermochemistry": _thermochemistry_payload(
                 stage_context["thermo"], frequency_result.get("thermochemistry")
             ),

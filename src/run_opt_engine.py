@@ -878,6 +878,7 @@ def compute_frequencies(
     solvent_eps,
     dispersion,
     dispersion_hessian_mode,
+    dispersion_hessian_step,
     thermo,
     verbose,
     memory_mb,
@@ -890,6 +891,7 @@ def compute_frequencies(
     from ase import units
     from ase import Atoms
     from ase.data import atomic_masses, atomic_numbers
+    import numpy as np
     from pyscf import dft, hessian as pyscf_hessian
     from pyscf.hessian import thermo as pyscf_thermo
 
@@ -931,31 +933,77 @@ def compute_frequencies(
         mf_freq, _ = apply_scf_settings(mf_freq, scf_settings, apply_density_fit=False)
         return mf_freq, {"density_fit_applied": density_fit_applied}
 
+    def _build_dispersion_calculator(atoms, dispersion_settings):
+        backend = dispersion_settings["backend"]
+        settings = dispersion_settings["settings"]
+        if backend == "d3":
+            d3_cls, _ = load_d3_calculator()
+            if d3_cls is None:
+                raise ImportError(
+                    "DFTD3 dispersion requested but no DFTD3 calculator is available. "
+                    "Install `dftd3` (recommended)."
+                )
+            return d3_cls(atoms=atoms, **settings), "dftd3"
+        from dftd4.ase import DFTD4
+
+        return DFTD4(atoms=atoms, **settings), "ase-dftd4"
+
+    def _compute_dispersion_hessian(atoms, step):
+        base_positions = atoms.get_positions()
+        natoms = len(base_positions)
+        hessian = np.zeros((natoms, natoms, 3, 3), dtype=float)
+        for atom_idx in range(natoms):
+            for coord in range(3):
+                pos_plus = base_positions.copy()
+                pos_plus[atom_idx, coord] += step
+                atoms.set_positions(pos_plus)
+                forces_plus = atoms.get_forces()
+                pos_minus = base_positions.copy()
+                pos_minus[atom_idx, coord] -= step
+                atoms.set_positions(pos_minus)
+                forces_minus = atoms.get_forces()
+                delta_forces = (forces_plus - forces_minus) / (2.0 * step)
+                hessian[:, atom_idx, :, coord] = -delta_forces
+        atoms.set_positions(base_positions)
+        return hessian
+
+    dispersion_payload = {"energy_hartree": 0.0, "info": None, "hessian": None}
+    if dispersion is not None:
+        dispersion_settings = parse_dispersion_settings(
+            dispersion, xc, charge=mol_freq.charge, spin=mol_freq.spin
+        )
+        positions = mol_freq.atom_coords(unit="Angstrom")
+        if hasattr(mol_freq, "atom_symbols"):
+            symbols = mol_freq.atom_symbols()
+        else:
+            symbols = [mol_freq.atom_symbol(i) for i in range(mol_freq.natm)]
+        atoms = Atoms(symbols=symbols, positions=positions)
+        dispersion_calc, dispersion_backend = _build_dispersion_calculator(
+            atoms, dispersion_settings
+        )
+        dispersion_energy_ev = dispersion_calc.get_potential_energy(atoms=atoms)
+        dispersion_energy_hartree = dispersion_energy_ev / units.Hartree
+        dispersion_payload["energy_hartree"] = dispersion_energy_hartree
+        dispersion_info = {
+            "model": dispersion,
+            "energy_hartree": dispersion_energy_hartree,
+            "energy_ev": dispersion_energy_ev,
+            "backend": dispersion_backend,
+            "hessian_mode": dispersion_hessian_mode,
+        }
+        if dispersion_hessian_mode == "numerical":
+            step = dispersion_hessian_step if dispersion_hessian_step is not None else 0.005
+            dispersion_hessian = _compute_dispersion_hessian(atoms, step)
+            dispersion_hessian *= (1.0 / units.Hartree) * (units.Bohr ** 2)
+            dispersion_payload["hessian"] = dispersion_hessian
+            dispersion_info["hessian_step"] = step
+        dispersion_payload["info"] = dispersion_info
+
     def _apply_dispersion(energy_value):
-        dispersion_info = None
-        if dispersion is not None and dispersion_hessian_mode == "none":
-            dispersion_settings = parse_dispersion_settings(
-                dispersion, xc, charge=mol_freq.charge, spin=mol_freq.spin
-            )
-            positions = mol_freq.atom_coords(unit="Angstrom")
-            if hasattr(mol_freq, "atom_symbols"):
-                symbols = mol_freq.atom_symbols()
-            else:
-                symbols = [mol_freq.atom_symbol(i) for i in range(mol_freq.natm)]
-            atoms = Atoms(symbols=symbols, positions=positions)
-            dispersion_energy_ev, dispersion_backend = _compute_dispersion_energy(
-                atoms, dispersion_settings
-            )
-            dispersion_energy_hartree = dispersion_energy_ev / units.Hartree
-            energy_value += dispersion_energy_hartree
-            dispersion_info = {
-                "model": dispersion,
-                "energy_hartree": dispersion_energy_hartree,
-                "energy_ev": dispersion_energy_ev,
-                "backend": dispersion_backend,
-                "hessian_mode": dispersion_hessian_mode,
-            }
-        return energy_value, dispersion_info
+        if dispersion_payload["info"] is None:
+            return energy_value, None, None
+        energy_value += dispersion_payload["energy_hartree"]
+        return energy_value, dispersion_payload["info"], dispersion_payload["hessian"]
 
     energy, mf_freq, info = _run_scf_with_retries(
         lambda scf_settings: _build_mf_freq(
@@ -966,7 +1014,7 @@ def compute_frequencies(
         "Frequency SCF",
     )
     density_fit_applied = bool(info.get("density_fit_applied"))
-    energy, dispersion_info = _apply_dispersion(energy)
+    energy, dispersion_info, dispersion_hessian = _apply_dispersion(energy)
     try:
         if hasattr(mf_freq, "Hessian"):
             hess = mf_freq.Hessian().kernel()
@@ -986,13 +1034,15 @@ def compute_frequencies(
                 "Frequency SCF (no density fit)",
             )
             density_fit_applied = bool(info.get("density_fit_applied"))
-            energy, dispersion_info = _apply_dispersion(energy)
+            energy, dispersion_info, dispersion_hessian = _apply_dispersion(energy)
             if hasattr(mf_freq, "Hessian"):
                 hess = mf_freq.Hessian().kernel()
             else:
                 hess = pyscf_hessian.Hessian(mf_freq).kernel()
         else:
             raise
+    if dispersion_hessian is not None:
+        hess = hess + dispersion_hessian
     harmonic = pyscf_thermo.harmonic_analysis(mol_freq, hess, imaginary_freq=False)
     freq_wavenumber = None
     freq_au = None
