@@ -36,7 +36,8 @@ to the machine where runs are submitted.
 - Hessian via PySCF; harmonic analysis.
 - Default: **numerical dispersion Hessian** (`frequency.dispersion: numerical`) so the
   vibrational analysis aligns with the dispersion-corrected PES. Use
-  `frequency.dispersion: none` for faster runs.
+  `frequency.dispersion: energy` to keep dispersion energy only, or
+  `frequency.dispersion: none` to skip dispersion entirely.
 
 ### IRC
 - IRC path from a TS; forward/reverse trajectories with energy profile.
@@ -121,6 +122,9 @@ Keep `daehyupsohn` first so the SMD-enabled PySCF build is preferred.
 
 Desktop GUI is distributed separately (see the `dftflow_gui` repository).
 
+Testing note: only `osx-arm64` has been validated so far. Packages for `linux-64`,
+`osx-64`, and `win-64` are provided but not yet tested.
+
 ## Usage
 
 ### Desktop GUI
@@ -131,6 +135,13 @@ Install and launch the separate `dftflow_gui` app.
 
 ```bash
 dftflow run path/to/input.xyz --config run_config.yaml
+```
+
+Optional profiling (writes timing + SCF cycle counts to metadata):
+
+```bash
+dftflow run path/to/input.xyz --config run_config.yaml --profile
+DFTFLOW_PROFILE=1 dftflow run path/to/input.xyz --config run_config.yaml
 ```
 
 ### Config examples (YAML)
@@ -265,6 +276,8 @@ dftflow queue prune --keep-days 30
 - Use `--queue-max-runtime` to cap wall time and `dftflow queue retry` to re-run failed entries.
 - Prefer `--resume` for restarts so metadata and logs stay linked to the original run.
 - Primary logs: `run.log`, `log/run_events.jsonl`, and `metadata.json` inside each run directory.
+- Enable profiling with `--profile` or `DFTFLOW_PROFILE=1` to record SCF/gradient/Hessian timings
+  and cycles in `metadata.json` (per-stage payloads or `optimization.profiling` for optimization runs).
 
 ## Troubleshooting / FAQ
 
@@ -298,11 +311,29 @@ dftflow queue prune --keep-days 30
   - Example: `charge=0 multiplicity=1`
 - If omitted, multiplicity is inferred from electron parity.
 - `solvent_dielectric.json` provides PCM epsilon map.
-- `frequency.dispersion` defaults to `numerical` (finite-difference dispersion Hessian).
-  Use `frequency.dispersion: none` to skip it.
-- `frequency.dispersion_step` (Angstrom) controls the numerical step size (default 0.005).
+- `frequency.dispersion` defaults to `numerical` (dispersion energy + finite-difference Hessian).
+  Use `frequency.dispersion: energy` for energy-only, or `frequency.dispersion: none`
+  to disable dispersion for frequencies.
+- `frequency.dispersion_step` (Angstrom) controls the numerical step size (default 0.005);
+  it applies only when `frequency.dispersion: numerical`.
+- `frequency.use_chkfile` defaults to true; set it to false to disable SCF chkfile reuse
+  during frequency calculations.
+- `scf.retry_preset` controls SCF retry aggressiveness: `fast`, `default`, `stable`, `off`.
+- `scf.diis_preset` sets a DIIS space preset when `scf.diis` is unset: `fast`, `default`,
+  `stable`, `off`.
+- For large systems, DFTFlow logs a recommendation to enable
+  `scf.extra.density_fit: autoaux` for faster SCF/gradient/Hessian.
 - SCF checkpoints default to `scf.chk` in the run directory for faster restarts.
 - SCF checkpoints are reused across optimization → frequency/single-point and scan points (set `chkfile: null` to disable).
+- `scan.executor` defaults to `local` (parallel). Use `serial` for single-process or `manifest`
+  to generate a distributed scan manifest.
+- `scan.max_workers` and `scan.threads_per_worker` are auto-adjusted for local scans to avoid
+  CPU oversubscription (workers × threads_per_worker ≤ CPU count).
+- `scan.batch_size` groups points per worker in local scans to reduce process overhead.
+- `io.write_interval_steps` / `io.write_interval_seconds` control how often optimization
+  metadata/checkpoints are written (defaults: 5 steps or 5 seconds).
+- `io.scan_write_interval_points` controls how often scan results/metadata are written
+  (default: every point).
 
 ## Repository structure
 
