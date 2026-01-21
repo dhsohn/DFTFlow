@@ -9,14 +9,14 @@
 
 ```mermaid
 flowchart TD
-  A[dftflow run] --> B{--background?}
+  A[dftflow run] --> B{background?}
   B -->|yes| C[enqueue run]
   C --> D[start queue runner]
   D --> E[queue runner picks entry]
-  E --> F[subprocess: dftflow run --no-background]
+  E --> F[subprocess runs dftflow without background]
   F --> G[update status]
   B -->|no| H[foreground run]
-  H --> I[register queue entry (tracking)]
+  H --> I[register queue entry]
   I --> G
 ```
 
