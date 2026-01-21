@@ -14,12 +14,15 @@ DFTFlow 설정 파일은 `.json`, `.yaml/.yml`, `.toml`을 지원합니다.
 | `optimizer` | 최적화 설정 (`mode`, `ase`) |
 | `single_point` | 단일점 override 설정 |
 | `frequency_enabled` | 최적화 후 주파수 실행 여부 |
-| `single_point_enabled` | 최적화 후 단일점 실행 여부 |
-| `irc_enabled` | 최적화 후 IRC 실행 여부 |
+| `single_point_enabled` | 최적화/주파수 후 단일점 실행 여부 |
+| `irc_enabled` | 최적화/주파수 후 IRC 실행 여부 |
 | `scan` / `scan2d` | 스캔 설정 (`dimensions`, `mode`, `executor`) |
 | `ts_quality` | TS 품질 검사 옵션 (`enforce` 등) |
 | `threads`, `memory_gb` | 자원 설정 |
 | `io` | 쓰기 간격 (`scan_write_interval_points` 등) |
+
+`calculation_mode: frequency`에서도 `irc_enabled`, `single_point_enabled`를 설정하면
+주파수 계산 뒤에 선택적으로 후속 단계를 실행합니다.
 
 ## 기본 예시 (최적화 + 주파수 + 단일점)
 

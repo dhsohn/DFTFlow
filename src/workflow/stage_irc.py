@@ -11,7 +11,7 @@ from .events import finalize_metadata
 from .utils import _atoms_to_atom_spec, _evaluate_irc_profile
 
 
-def run_irc_stage(stage_context, queue_update_fn):
+def run_irc_stage(stage_context, queue_update_fn, *, finalize=True, update_summary=True):
     logging.info("Starting IRC calculation...")
     run_start = stage_context["run_start"]
     calculation_metadata = stage_context["metadata"]
@@ -362,34 +362,38 @@ def run_irc_stage(stage_context, queue_update_fn):
             "opt_converged": None,
             "converged": True,
         }
-        calculation_metadata["summary"] = summary
-        calculation_metadata["summary"]["memory_limit_enforced"] = stage_context[
-            "memory_limit_enforced"
-        ]
-        finalize_metadata(
-            stage_context["run_metadata_path"],
-            stage_context["event_log_path"],
-            stage_context["run_id"],
-            stage_context["run_dir"],
-            calculation_metadata,
-            status="completed",
-            previous_status="running",
-            queue_update_fn=queue_update_fn,
-            exit_code=0,
-        )
+        if update_summary:
+            calculation_metadata["summary"] = summary
+            calculation_metadata["summary"]["memory_limit_enforced"] = stage_context[
+                "memory_limit_enforced"
+            ]
+        if finalize:
+            finalize_metadata(
+                stage_context["run_metadata_path"],
+                stage_context["event_log_path"],
+                stage_context["run_id"],
+                stage_context["run_dir"],
+                calculation_metadata,
+                status="completed",
+                previous_status="running",
+                queue_update_fn=queue_update_fn,
+                exit_code=0,
+            )
+        return irc_payload
     except Exception as exc:
         logging.exception("IRC calculation failed.")
-        finalize_metadata(
-            stage_context["run_metadata_path"],
-            stage_context["event_log_path"],
-            stage_context["run_id"],
-            stage_context["run_dir"],
-            calculation_metadata,
-            status="failed",
-            previous_status="running",
-            queue_update_fn=queue_update_fn,
-            exit_code=1,
-            details={"error": str(exc)},
-            error=exc,
-        )
+        if finalize:
+            finalize_metadata(
+                stage_context["run_metadata_path"],
+                stage_context["event_log_path"],
+                stage_context["run_id"],
+                stage_context["run_dir"],
+                calculation_metadata,
+                status="failed",
+                previous_status="running",
+                queue_update_fn=queue_update_fn,
+                exit_code=1,
+                details={"error": str(exc)},
+                error=exc,
+            )
         raise

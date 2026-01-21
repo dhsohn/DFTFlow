@@ -629,7 +629,8 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                         if calculation_mode == "frequency"
                         else None,
                     },
-                    "single_point_enabled": calculation_mode == "single_point",
+                    "single_point_enabled": calculation_mode == "single_point"
+                    or bool(context.get("single_point_enabled")),
                     "calculation_mode": calculation_mode,
                     "charge": charge,
                     "spin": spin,
@@ -711,6 +712,9 @@ def run(args, config: RunConfig, config_raw, config_source_path, run_in_backgrou
                     "profiling_enabled": profiling_enabled,
                     "snapshot_interval_steps": context.get("snapshot_interval_steps"),
                     "snapshot_mode": context.get("snapshot_mode"),
+                    "single_point_enabled": context.get("single_point_enabled"),
+                    "irc_enabled": context.get("irc_enabled"),
+                    "irc_config": context.get("irc_config"),
                 }
                 if calculation_mode == "single_point":
                     run_single_point_stage(stage_context, _update_foreground_queue)

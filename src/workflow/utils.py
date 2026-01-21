@@ -631,13 +631,18 @@ def _parse_scan_dimensions(scan_config):
 def _normalize_stage_flags(config, calculation_mode):
     frequency_enabled = config.frequency_enabled
     single_point_enabled = config.single_point_enabled
-    if calculation_mode != "optimization":
+    if calculation_mode == "optimization":
+        if frequency_enabled is None:
+            frequency_enabled = True
+        if single_point_enabled is None:
+            single_point_enabled = True
+    else:
         frequency_enabled = False
-        single_point_enabled = False
-    if frequency_enabled is None and calculation_mode == "optimization":
-        frequency_enabled = True
-    if single_point_enabled is None:
-        single_point_enabled = True
+        if calculation_mode == "frequency":
+            if single_point_enabled is None:
+                single_point_enabled = False
+        else:
+            single_point_enabled = False
     return frequency_enabled, single_point_enabled
 
 

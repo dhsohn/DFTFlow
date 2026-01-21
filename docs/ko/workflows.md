@@ -25,13 +25,15 @@ flowchart TD
   G --> G1[optional frequency]
   G1 --> G2[optional IRC]
   G2 --> G3[optional single-point]
+  I --> I1[optional IRC]
+  I1 --> I2[optional single-point]
 ```
 
-## 최적화 후 후속 단계
+## 최적화 및 주파수 후속 단계
 
 - `frequency_enabled`: 최적화 후 진동수 계산 수행 여부.
-- `irc_enabled`: 최적화 후 IRC 실행 여부.
-- `single_point_enabled`: 최적화 후 단일점 계산 수행 여부.
+- `irc_enabled`: 최적화 또는 주파수 후 IRC 실행 여부.
+- `single_point_enabled`: 최적화 또는 주파수 후 단일점 계산 수행 여부.
 
 ## TS 품질(ts_quality) 게이트
 

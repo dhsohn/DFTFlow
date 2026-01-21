@@ -76,7 +76,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     if scan_config:
         scan_mode = _normalize_scan_mode(scan_config.get("mode"))
     optimizer_mode = None
-    if calculation_mode in ("optimization", "irc") or (
+    if calculation_mode in ("optimization", "irc", "frequency") or (
         calculation_mode == "scan" and scan_mode == "optimization"
     ):
         optimizer_mode = _normalize_optimizer_mode(
@@ -89,7 +89,7 @@ def prepare_run_context(args, config: RunConfig, config_raw) -> RunContext:
     frequency_enabled, single_point_enabled = _normalize_stage_flags(
         config, calculation_mode
     )
-    if calculation_mode == "optimization":
+    if calculation_mode in ("optimization", "frequency"):
         irc_enabled = bool(config.irc_enabled)
     else:
         irc_enabled = calculation_mode == "irc"
