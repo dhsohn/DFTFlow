@@ -2,18 +2,25 @@ import logging
 import time
 
 from qcschema_export import export_qcschema_result
-from run_opt_engine import compute_single_point_energy
+from .engine_adapter import WorkflowEngineAdapter
 from .events import finalize_metadata
 from .utils import _resolve_d3_params, _update_checkpoint_scf
 
 
-def run_single_point_stage(stage_context, queue_update_fn):
+DEFAULT_ENGINE_ADAPTER = WorkflowEngineAdapter()
+
+
+def run_single_point_stage(
+    stage_context,
+    queue_update_fn,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
+):
     logging.info("Starting single-point energy calculation...")
     run_start = stage_context["run_start"]
     calculation_metadata = stage_context["metadata"]
     profiling_enabled = bool(stage_context.get("profiling_enabled"))
     try:
-        sp_result = compute_single_point_energy(
+        sp_result = engine_adapter.compute_single_point_energy(
             stage_context["mol"],
             stage_context["calc_basis"],
             stage_context["calc_xc"],

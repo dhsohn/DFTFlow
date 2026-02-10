@@ -4,10 +4,9 @@ import logging
 import os
 import time
 
-from ase_backend import _run_ase_irc
-from run_opt_engine import compute_single_point_energy
 from run_opt_metadata import format_xyz_comment, write_checkpoint, write_xyz_snapshot
 from run_opt_resources import resolve_run_path
+from .engine_adapter import WorkflowEngineAdapter
 from .events import finalize_metadata
 from .utils import (
     _atoms_to_atom_spec,
@@ -15,6 +14,9 @@ from .utils import (
     _resolve_d3_params,
     _update_checkpoint_scf,
 )
+
+
+DEFAULT_ENGINE_ADAPTER = WorkflowEngineAdapter()
 
 
 def _normalize_snapshot_settings(snapshot_interval_steps, snapshot_mode):
@@ -308,8 +310,9 @@ def _run_ase_irc_with_callbacks(
     step_callback,
     direction_callback,
     resume_state,
+    engine_adapter,
 ):
-    return _run_ase_irc(
+    return engine_adapter.run_ase_irc(
         stage_context["input_xyz"],
         stage_context["run_dir"],
         stage_context["charge"],
@@ -424,8 +427,13 @@ def _record_irc_metadata(calculation_metadata, irc_payload, profiling_enabled):
         calculation_metadata.setdefault("profiling", {})["irc"] = irc_payload.get("profiling")
 
 
-def _execute_irc_single_point(stage_context, multiplicity, profiling_enabled):
-    return compute_single_point_energy(
+def _execute_irc_single_point(
+    stage_context,
+    multiplicity,
+    profiling_enabled,
+    engine_adapter,
+):
+    return engine_adapter.compute_single_point_energy(
         stage_context["mol"],
         stage_context["calc_basis"],
         stage_context["calc_xc"],
@@ -454,6 +462,7 @@ def _run_post_irc_single_point(
     profiling_enabled,
     multiplicity,
     irc_payload,
+    engine_adapter,
 ):
     sp_result = None
     sp_status = "skipped"
@@ -466,7 +475,10 @@ def _run_post_irc_single_point(
             logging.info("Calculating single-point energy after IRC...")
             try:
                 sp_result = _execute_irc_single_point(
-                    stage_context, multiplicity, profiling_enabled
+                    stage_context,
+                    multiplicity,
+                    profiling_enabled,
+                    engine_adapter,
                 )
                 sp_status = "executed"
                 if isinstance(calculation_metadata.get("single_point"), dict):
@@ -532,6 +544,7 @@ def run_irc_stage(
     finalize=True,
     update_summary=True,
     run_single_point=True,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
 ):
     logging.info("Starting IRC calculation...")
     run_start = stage_context["run_start"]
@@ -591,6 +604,7 @@ def run_irc_stage(
             record_step_callback,
             mark_direction_complete_callback,
             resume_data["resume_state"],
+            engine_adapter,
         )
         profile = resume_data["profile_cache"] or irc_result.get("profile", [])
         irc_payload = _build_irc_payload(
@@ -611,6 +625,7 @@ def run_irc_stage(
             profiling_enabled=profiling_enabled,
             multiplicity=multiplicity,
             irc_payload=irc_payload,
+            engine_adapter=engine_adapter,
         )
         _record_single_point_status(
             calculation_metadata,

@@ -10,9 +10,7 @@ import time
 import traceback
 from datetime import datetime
 
-from ase_backend import _run_ase_optimizer
 from run_queue import record_status_event
-from run_opt_engine import compute_single_point_energy, run_capability_check
 from run_opt_metadata import (
     collect_git_metadata,
     compute_file_hash,
@@ -26,6 +24,7 @@ from run_opt_resources import (
     ensure_parent_dir,
     resolve_run_path,
 )
+from .engine_adapter import WorkflowEngineAdapter
 from .events import finalize_metadata
 from .types import MoleculeContext, RunContext
 from .utils import (
@@ -41,6 +40,7 @@ from .utils import (
 
 
 SCAN_EXECUTORS = ("serial", "local", "manifest")
+DEFAULT_ENGINE_ADAPTER = WorkflowEngineAdapter()
 
 
 def _normalize_scan_executor(value):
@@ -238,6 +238,7 @@ def _run_scan_point(
     thread_count,
     parallel,
     profiling_enabled=False,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
 ):
     from ase.io import read as ase_read
     from ase.io import write as ase_write
@@ -274,7 +275,7 @@ def _run_scan_point(
         )
         scan_constraints = _build_scan_constraints(dimensions, values)
         merged_constraints = _merge_constraints(constraints, scan_constraints)
-        opt_result = _run_ase_optimizer(
+        opt_result = engine_adapter.run_ase_optimizer(
             input_xyz_path,
             output_xyz_path,
             point_run_dir,
@@ -307,7 +308,7 @@ def _run_scan_point(
     )
     if memory_mb:
         mol_scan.max_memory = memory_mb
-    scf_result = compute_single_point_energy(
+    scf_result = engine_adapter.compute_single_point_energy(
         mol_scan,
         basis,
         xc,
@@ -374,6 +375,7 @@ def _run_scan_batch(
     thread_count,
     parallel,
     profiling_enabled=False,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
 ):
     results = []
     errors = []
@@ -407,6 +409,7 @@ def _run_scan_batch(
                 thread_count=thread_count,
                 parallel=parallel,
                 profiling_enabled=profiling_enabled,
+                engine_adapter=engine_adapter,
             )
             results.append(result)
         except Exception as exc:
@@ -475,7 +478,12 @@ def _write_scan_manifest(
         json.dump(payload, handle, indent=2)
 
 
-def run_scan_point_from_manifest(manifest_path, index):
+def run_scan_point_from_manifest(
+    manifest_path,
+    index,
+    *,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
+):
     if not os.path.exists(manifest_path):
         raise FileNotFoundError(f"Manifest file not found: {manifest_path}")
     with open(manifest_path, "r", encoding="utf-8") as handle:
@@ -517,6 +525,7 @@ def run_scan_point_from_manifest(manifest_path, index):
         thread_count=thread_count,
         parallel=True,
         profiling_enabled=bool(settings.get("profiling_enabled")),
+        engine_adapter=engine_adapter,
     )
 
 
@@ -729,12 +738,13 @@ def _run_scan_capability_check_if_needed(
     verbose,
     memory_mb,
     multiplicity,
+    engine_adapter,
 ):
     if scan_executor == "manifest":
         logging.info("Manifest executor selected; skipping capability check.")
         return
     mol = molecule_context["mol"]
-    run_capability_check(
+    engine_adapter.run_capability_check(
         mol,
         calc_state["basis"],
         calc_state["xc"],
@@ -941,6 +951,7 @@ def _execute_local_scan(
     profiling_enabled,
     results_by_index,
     maybe_write_scan_results,
+    engine_adapter,
 ):
     error = None
     batch_size = executor_state["batch_size"] or 1
@@ -978,6 +989,7 @@ def _execute_local_scan(
                     thread_count=executor_state["thread_count"],
                     parallel=True,
                     profiling_enabled=profiling_enabled,
+                    engine_adapter=engine_adapter,
                 )
             ] = batch
         for future in concurrent.futures.as_completed(futures):
@@ -1030,6 +1042,7 @@ def _execute_serial_scan(
     profiling_enabled,
     results_by_index,
     maybe_write_scan_results,
+    engine_adapter,
 ):
     atoms_template = None
     if scan_executor == "serial":
@@ -1065,6 +1078,7 @@ def _execute_serial_scan(
             thread_count=executor_state["thread_count"],
             parallel=False,
             profiling_enabled=profiling_enabled,
+            engine_adapter=engine_adapter,
         )
         results_by_index[index] = point_result
         maybe_write_scan_results()
@@ -1118,6 +1132,7 @@ def run_scan_stage(
     openmp_available,
     effective_threads,
     queue_update_fn,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
 ):
     scan_config = context["scan_config"] or {}
     scan_mode = context["scan_mode"]
@@ -1185,6 +1200,7 @@ def run_scan_stage(
         verbose=verbose,
         memory_mb=memory_mb,
         multiplicity=multiplicity,
+        engine_adapter=engine_adapter,
     )
     _log_scan_execution_plan(
         scan_mode=scan_mode,
@@ -1256,6 +1272,7 @@ def run_scan_stage(
                 profiling_enabled=profiling_enabled,
                 results_by_index=results_by_index,
                 maybe_write_scan_results=maybe_write_scan_results,
+                engine_adapter=engine_adapter,
             )
         else:
             _execute_serial_scan(
@@ -1276,6 +1293,7 @@ def run_scan_stage(
                 profiling_enabled=profiling_enabled,
                 results_by_index=results_by_index,
                 maybe_write_scan_results=maybe_write_scan_results,
+                engine_adapter=engine_adapter,
             )
 
         _finalize_scan_with_results(

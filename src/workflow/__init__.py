@@ -20,9 +20,7 @@ from run_opt_engine import (
     apply_density_fit_setting,
     apply_scf_settings,
     apply_solvent_model,
-    compute_imaginary_mode,
     normalize_xc_functional,
-    run_capability_check,
     select_ks_type,
 )
 from run_opt_logging import ensure_stream_newlines, setup_logging_context
@@ -40,6 +38,7 @@ from run_opt_resources import (
     inspect_thread_settings,
 )
 from .context import build_molecule_context, prepare_run_context
+from .engine_adapter import WorkflowEngineAdapter
 from .events import enqueue_background_run
 from .stage_freq import run_frequency_stage
 from .stage_irc import run_irc_stage
@@ -62,6 +61,7 @@ from .utils import (
 
 
 __all__ = ["run", "run_doctor"]
+DEFAULT_ENGINE_ADAPTER = WorkflowEngineAdapter()
 
 
 def run_doctor():
@@ -588,6 +588,7 @@ def _run_non_optimization_mode(
     frequency_output_path,
     profiling_enabled,
     update_foreground_queue,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
 ):
     molecule_context = runtime_state["molecule_context"]
     mol = molecule_context["mol"]
@@ -645,7 +646,7 @@ def _run_non_optimization_mode(
             else "IRC",
             " + Hessian" if calculation_mode in ("frequency", "irc") else "",
         )
-        run_capability_check(
+        engine_adapter.run_capability_check(
             mol,
             calc_basis,
             calc_xc,
@@ -836,10 +837,18 @@ def _run_non_optimization_mode(
         "irc_config": context.get("irc_config"),
     }
     if calculation_mode == "single_point":
-        run_single_point_stage(stage_context, update_foreground_queue)
+        run_single_point_stage(
+            stage_context,
+            update_foreground_queue,
+            engine_adapter=engine_adapter,
+        )
         return
     if calculation_mode == "frequency":
-        run_frequency_stage(stage_context, update_foreground_queue)
+        run_frequency_stage(
+            stage_context,
+            update_foreground_queue,
+            engine_adapter=engine_adapter,
+        )
         return
 
     irc_config = context["irc_config"]
@@ -853,7 +862,7 @@ def _run_non_optimization_mode(
             irc_step_size = irc_config.step_size
         if irc_config.force_threshold is not None:
             irc_force_threshold = irc_config.force_threshold
-    mode_result = compute_imaginary_mode(
+    mode_result = engine_adapter.compute_imaginary_mode(
         mol,
         calc_basis,
         calc_xc,
@@ -890,7 +899,11 @@ def _run_non_optimization_mode(
             "irc_force_threshold": irc_force_threshold,
         }
     )
-    run_irc_stage(stage_context, update_foreground_queue)
+    run_irc_stage(
+        stage_context,
+        update_foreground_queue,
+        engine_adapter=engine_adapter,
+    )
 
 
 def _create_foreground_queue_updater(context, queue_tracking):
@@ -925,7 +938,13 @@ def _prepare_runtime_state_for_run(args, config: RunConfig, context):
     )
 
 
-def _dispatch_stage_for_mode(args, context, runtime_state, update_foreground_queue):
+def _dispatch_stage_for_mode(
+    args,
+    context,
+    runtime_state,
+    update_foreground_queue,
+    engine_adapter: WorkflowEngineAdapter = DEFAULT_ENGINE_ADAPTER,
+):
     calculation_mode = context["calculation_mode"]
     molecule_context = runtime_state["molecule_context"]
     memory_mb = runtime_state["memory_mb"]
@@ -945,6 +964,7 @@ def _dispatch_stage_for_mode(args, context, runtime_state, update_foreground_que
             openmp_available,
             effective_threads,
             update_foreground_queue,
+            engine_adapter=engine_adapter,
         )
         return
 
@@ -972,6 +992,7 @@ def _dispatch_stage_for_mode(args, context, runtime_state, update_foreground_que
             frequency_output_path=context["frequency_output_path"],
             profiling_enabled=bool(context.get("profiling_enabled")),
             update_foreground_queue=update_foreground_queue,
+            engine_adapter=engine_adapter,
         )
         return
 
@@ -985,6 +1006,7 @@ def _dispatch_stage_for_mode(args, context, runtime_state, update_foreground_que
         openmp_available,
         effective_threads,
         update_foreground_queue,
+        engine_adapter=engine_adapter,
     )
 
 

@@ -353,6 +353,7 @@ def _run_irc_for_frequency_geometry(
             finalize=False,
             update_summary=False,
             run_single_point=False,
+            engine_adapter=engine_adapter,
         )
         if irc_payload is not None:
             calculation_metadata["irc"] = irc_payload
