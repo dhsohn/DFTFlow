@@ -30,6 +30,9 @@ _DEFAULT_REMOVE_PATTERNS = [
     "*.scfp",
     "*.opt",
 ]
+_DEFAULT_DISK_THRESHOLD_GB = 50.0
+_DEFAULT_DISK_INTERVAL_SEC = 300
+_DEFAULT_DISK_TOP_N = 10
 
 
 @dataclass
@@ -75,6 +78,14 @@ class CleanupConfig:
     keep_extensions: list[str] = field(default_factory=lambda: list(_DEFAULT_KEEP_EXTENSIONS))
     keep_filenames: list[str] = field(default_factory=lambda: list(_DEFAULT_KEEP_FILENAMES))
     remove_patterns: list[str] = field(default_factory=lambda: list(_DEFAULT_REMOVE_PATTERNS))
+    remove_overrides_keep: bool = True
+
+
+@dataclass
+class DiskMonitorConfig:
+    threshold_gb: float = _DEFAULT_DISK_THRESHOLD_GB
+    interval_sec: int = _DEFAULT_DISK_INTERVAL_SEC
+    top_n: int = _DEFAULT_DISK_TOP_N
 
 
 @dataclass
@@ -82,6 +93,7 @@ class AppConfig:
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
+    disk_monitor: DiskMonitorConfig = field(default_factory=DiskMonitorConfig)
 
 
 def load_app_config(config_path: str | None = None) -> AppConfig:
@@ -137,6 +149,7 @@ def _parse_app_config(raw: dict[str, Any]) -> AppConfig:
     runtime_raw = _as_mapping(raw.get("runtime"))
     monitoring_raw = _as_mapping(raw.get("monitoring"))
     cleanup_raw = _as_mapping(raw.get("cleanup"))
+    disk_monitor_raw = _as_mapping(raw.get("disk_monitor"))
 
     runtime = RuntimeConfig(
         allowed_root=_normalize_runtime_path(
@@ -158,8 +171,14 @@ def _parse_app_config(raw: dict[str, Any]) -> AppConfig:
 
     monitoring = _parse_monitoring_config(monitoring_raw)
     cleanup = _parse_cleanup_config(cleanup_raw)
+    disk_monitor = _parse_disk_monitor_config(disk_monitor_raw)
 
-    return AppConfig(runtime=runtime, monitoring=monitoring, cleanup=cleanup)
+    return AppConfig(
+        runtime=runtime,
+        monitoring=monitoring,
+        cleanup=cleanup,
+        disk_monitor=disk_monitor,
+    )
 
 
 def _parse_monitoring_config(raw: dict[str, Any]) -> MonitoringConfig:
@@ -250,6 +269,31 @@ def _parse_cleanup_config(raw: dict[str, Any]) -> CleanupConfig:
             defaults=_DEFAULT_REMOVE_PATTERNS,
             field_name="cleanup.remove_patterns",
         ),
+        remove_overrides_keep=_as_bool(
+            raw.get("remove_overrides_keep"),
+            default=CleanupConfig.remove_overrides_keep,
+            field_name="cleanup.remove_overrides_keep",
+        ),
+    )
+
+
+def _parse_disk_monitor_config(raw: dict[str, Any]) -> DiskMonitorConfig:
+    return DiskMonitorConfig(
+        threshold_gb=_as_float(
+            raw.get("threshold_gb"),
+            default=DiskMonitorConfig.threshold_gb,
+            field_name="disk_monitor.threshold_gb",
+        ),
+        interval_sec=_as_int(
+            raw.get("interval_sec"),
+            default=DiskMonitorConfig.interval_sec,
+            field_name="disk_monitor.interval_sec",
+        ),
+        top_n=_as_int(
+            raw.get("top_n"),
+            default=DiskMonitorConfig.top_n,
+            field_name="disk_monitor.top_n",
+        ),
     )
 
 
@@ -257,6 +301,7 @@ def _validate_app_config(cfg: AppConfig) -> None:
     _validate_runtime_config(cfg.runtime)
     _validate_monitoring_config(cfg.monitoring)
     _validate_cleanup_config(cfg.cleanup)
+    _validate_disk_monitor_config(cfg.disk_monitor)
 
 
 def _validate_runtime_config(runtime: RuntimeConfig) -> None:
@@ -317,6 +362,21 @@ def _validate_cleanup_config(cleanup: CleanupConfig) -> None:
         raise ValueError("cleanup.keep_extensions must not be empty")
     if not cleanup.keep_filenames:
         raise ValueError("cleanup.keep_filenames must not be empty")
+
+
+def _validate_disk_monitor_config(disk_monitor: DiskMonitorConfig) -> None:
+    if disk_monitor.threshold_gb <= 0:
+        raise ValueError(
+            f"disk_monitor.threshold_gb must be > 0 (got {disk_monitor.threshold_gb})"
+        )
+    if disk_monitor.interval_sec < 10:
+        raise ValueError(
+            f"disk_monitor.interval_sec must be >= 10 (got {disk_monitor.interval_sec})"
+        )
+    if not (1 <= disk_monitor.top_n <= 100):
+        raise ValueError(
+            f"disk_monitor.top_n must be in 1..100 (got {disk_monitor.top_n})"
+        )
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:

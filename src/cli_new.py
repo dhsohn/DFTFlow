@@ -61,6 +61,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("--max-retries", type=int, default=None)
     run_parser.add_argument("--force", action="store_true", help="Force re-run even if existing output is completed")
+    run_mode = run_parser.add_mutually_exclusive_group()
+    run_mode.add_argument(
+        "--background",
+        action="store_true",
+        help="Start run-inp in background and print pid/log path.",
+    )
+    run_mode.add_argument(
+        "--foreground",
+        action="store_true",
+        help="Force foreground execution (disables background mode).",
+    )
     run_parser.add_argument("--json", action="store_true")
 
     status_parser = subparsers.add_parser("status", help="Check the status of a run.")
@@ -84,6 +95,28 @@ def build_parser() -> argparse.ArgumentParser:
     organize_parser.add_argument("--job-type", default=None, help="Filter by job_type (with --find)")
     organize_parser.add_argument("--limit", type=int, default=0, help="Limit results (with --find)")
     organize_parser.add_argument("--json", action="store_true")
+
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Run quality checks against completed runs.",
+    )
+    check_parser.add_argument("--reaction-dir", default=None, help="Single reaction directory to check")
+    check_parser.add_argument(
+        "--root",
+        default=None,
+        help="Root directory to scan (must match allowed_root or organized_root)",
+    )
+    check_parser.add_argument("--json", action="store_true")
+
+    monitor_parser = subparsers.add_parser(
+        "monitor",
+        help="Monitor disk usage for allowed_root and organized_root.",
+    )
+    monitor_parser.add_argument("--watch", action="store_true", default=False, help="Continuous monitoring mode")
+    monitor_parser.add_argument("--interval-sec", type=int, default=None, help="Scan interval in seconds (watch mode)")
+    monitor_parser.add_argument("--threshold-gb", type=float, default=None, help="Disk usage threshold in GB")
+    monitor_parser.add_argument("--top-n", type=int, default=None, help="Number of top directories to show")
+    monitor_parser.add_argument("--json", action="store_true")
 
     cleanup_parser = subparsers.add_parser("cleanup")
     cleanup_parser.add_argument(
@@ -123,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
         "run-inp": _cmd_run_inp,
         "status": _cmd_status,
         "organize": _cmd_organize,
+        "check": _cmd_check,
+        "monitor": _cmd_monitor,
         "cleanup": _cmd_cleanup,
     }
     try:
@@ -172,6 +207,18 @@ def _cmd_cleanup(args: argparse.Namespace) -> int:
     from commands.cleanup import cmd_cleanup
 
     return int(cmd_cleanup(args))
+
+
+def _cmd_check(args: argparse.Namespace) -> int:
+    from commands.check import cmd_check
+
+    return int(cmd_check(args))
+
+
+def _cmd_monitor(args: argparse.Namespace) -> int:
+    from commands.monitor import cmd_monitor
+
+    return int(cmd_monitor(args))
 
 
 if __name__ == "__main__":

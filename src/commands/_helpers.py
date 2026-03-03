@@ -81,6 +81,36 @@ def validate_cleanup_reaction_dir(cfg: AppConfig, reaction_dir_raw: str) -> Path
     return reaction_dir
 
 
+def validate_check_reaction_dir(cfg: AppConfig, reaction_dir_raw: str) -> Path:
+    reaction_dir = to_resolved_path(reaction_dir_raw)
+    if not reaction_dir.exists() or not reaction_dir.is_dir():
+        raise ValueError(f"Reaction directory not found: {reaction_dir}")
+
+    allowed_root = to_resolved_path(cfg.runtime.allowed_root)
+    organized_root = to_resolved_path(cfg.runtime.organized_root)
+    if not is_subpath(reaction_dir, allowed_root) and not is_subpath(reaction_dir, organized_root):
+        raise ValueError(
+            "Reaction directory must be under allowed_root "
+            f"({allowed_root}) or organized_root ({organized_root}). got={reaction_dir}"
+        )
+    return reaction_dir
+
+
+def validate_check_root_dir(cfg: AppConfig, root_raw: str) -> Path:
+    root = to_resolved_path(root_raw)
+    if not root.exists() or not root.is_dir():
+        raise ValueError(f"Root directory not found: {root}")
+
+    allowed_root = to_resolved_path(cfg.runtime.allowed_root)
+    organized_root = to_resolved_path(cfg.runtime.organized_root)
+    if root != allowed_root and root != organized_root:
+        raise ValueError(
+            "--root must exactly match allowed_root "
+            f"({allowed_root}) or organized_root ({organized_root}). got={root}"
+        )
+    return root
+
+
 def human_bytes(value: int) -> str:
     amount = float(value)
     for unit in ("B", "KB", "MB", "GB"):
@@ -88,4 +118,3 @@ def human_bytes(value: int) -> str:
             return f"{amount:.1f} {unit}"
         amount /= 1024.0
     return f"{amount:.1f} TB"
-

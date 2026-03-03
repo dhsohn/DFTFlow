@@ -94,6 +94,11 @@ def test_load_app_config_parses_cleanup_overrides(tmp_path: Path) -> None:
                 "  keep_extensions: [inp, out]",
                 "  keep_filenames: [run_state.json, run_report.json]",
                 "  remove_patterns: [\"*.tmp\"]",
+                "  remove_overrides_keep: true",
+                "disk_monitor:",
+                "  threshold_gb: 12.5",
+                "  interval_sec: 120",
+                "  top_n: 5",
             ]
         ),
         encoding="utf-8",
@@ -104,4 +109,25 @@ def test_load_app_config_parses_cleanup_overrides(tmp_path: Path) -> None:
     assert cfg.cleanup.keep_extensions == [".inp", ".out"]
     assert cfg.cleanup.keep_filenames == ["run_state.json", "run_report.json"]
     assert cfg.cleanup.remove_patterns == ["*.tmp"]
+    assert cfg.cleanup.remove_overrides_keep is True
+    assert cfg.disk_monitor.threshold_gb == 12.5
+    assert cfg.disk_monitor.interval_sec == 120
+    assert cfg.disk_monitor.top_n == 5
 
+
+def test_load_app_config_rejects_invalid_disk_monitor_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "runtime:",
+                f"  allowed_root: {tmp_path / 'runs'}",
+                f"  organized_root: {tmp_path / 'outputs'}",
+                "disk_monitor:",
+                "  threshold_gb: 0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="disk_monitor.threshold_gb must be > 0"):
+        load_app_config(str(config_path))

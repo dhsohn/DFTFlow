@@ -233,3 +233,43 @@ def test_cleanup_root_scan_ignores_symlinked_external_directory(tmp_path: Path) 
     )
     assert rc == 0
     assert outside_junk.exists()
+
+
+def test_cleanup_remove_overrides_keep_false_preserves_keep_matches(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "runs"
+    organized_root = tmp_path / "outputs"
+    allowed_root.mkdir()
+    organized_root.mkdir()
+    reaction_dir = organized_root / "single_point" / "H" / "run_001"
+    _write_organized_run(reaction_dir)
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "runtime:",
+                f"  allowed_root: {allowed_root}",
+                f"  organized_root: {organized_root}",
+                "cleanup:",
+                "  keep_extensions: [inp, out, xyz, gbw, hess, json]",
+                "  keep_filenames: [run_state.json, run_report.json, run_report.md]",
+                "  remove_patterns: [\"*.json\"]",
+                "  remove_overrides_keep: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rc = main(
+        [
+            "--config",
+            str(config_path),
+            "cleanup",
+            "--reaction-dir",
+            str(reaction_dir),
+            "--apply",
+        ]
+    )
+    assert rc == 0
+    assert (reaction_dir / "run_report.json").exists()
+    assert (reaction_dir / "run_state.json").exists()

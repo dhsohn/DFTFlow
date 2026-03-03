@@ -24,3 +24,9 @@ cleanup:
   keep_extensions: [".inp", ".out", ".xyz", ".gbw", ".hess"]
   keep_filenames: ["run_state.json", "run_report.json", "run_report.md"]
   remove_patterns: ["*.retry*.inp", "*.retry*.out", "*_trj.xyz", "*.densities", "*.engrad", "*.tmp", "*.prop", "*.scfp", "*.opt"]
+  remove_overrides_keep: true
+
+disk_monitor:
+  threshold_gb: 50.0
+  interval_sec: 300
+  top_n: 10

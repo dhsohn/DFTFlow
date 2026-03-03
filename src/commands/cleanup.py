@@ -110,6 +110,7 @@ def cmd_cleanup(args: Any) -> int:
     keep_extensions = set(cfg.cleanup.keep_extensions)
     keep_filenames = set(cfg.cleanup.keep_filenames)
     remove_patterns = list(cfg.cleanup.remove_patterns)
+    remove_overrides_keep = bool(cfg.cleanup.remove_overrides_keep)
 
     if reaction_dir_raw:
         try:
@@ -122,6 +123,7 @@ def cmd_cleanup(args: Any) -> int:
             keep_extensions=keep_extensions,
             keep_filenames=keep_filenames,
             remove_patterns=remove_patterns,
+            remove_overrides_keep=remove_overrides_keep,
         )
         plans = [plan] if plan else []
         skips = [skip] if skip else []
@@ -136,6 +138,7 @@ def cmd_cleanup(args: Any) -> int:
             keep_extensions=keep_extensions,
             keep_filenames=keep_filenames,
             remove_patterns=remove_patterns,
+            remove_overrides_keep=remove_overrides_keep,
         )
 
     if not getattr(args, "apply", False):
@@ -153,4 +156,3 @@ def cmd_cleanup(args: Any) -> int:
         return 0
 
     return _cmd_cleanup_apply(plans, skips, as_json=args.json)
-

@@ -49,14 +49,28 @@ def _should_keep(
     keep_extensions: set[str],
     keep_filenames: set[str],
     remove_patterns: list[str],
+    *,
+    remove_overrides_keep: bool = True,
 ) -> bool:
     name = file_path.name
-    for pattern in remove_patterns:
-        if fnmatch.fnmatch(name, pattern):
-            return False
+
+    if remove_overrides_keep:
+        for pattern in remove_patterns:
+            if fnmatch.fnmatch(name, pattern):
+                return False
+
     if name in keep_filenames:
         return True
-    return file_path.suffix.lower() in keep_extensions
+
+    if file_path.suffix.lower() in keep_extensions:
+        return True
+
+    if not remove_overrides_keep:
+        for pattern in remove_patterns:
+            if fnmatch.fnmatch(name, pattern):
+                return False
+
+    return False
 
 
 def _state_artifact_path_texts(state: dict[str, Any]) -> list[str]:
@@ -147,6 +161,8 @@ def compute_cleanup_plan(
     keep_extensions: set[str],
     keep_filenames: set[str],
     remove_patterns: list[str],
+    *,
+    remove_overrides_keep: bool = True,
 ) -> CleanupPlan:
     plan = CleanupPlan(reaction_dir=reaction_dir, run_id=str(state.get("run_id", "unknown")))
     protected_paths, protected_names = _collect_protected_artifacts(state, reaction_dir)
@@ -163,7 +179,13 @@ def compute_cleanup_plan(
             plan.keep_count += 1
             continue
 
-        if _should_keep(file_path, keep_extensions, keep_filenames, remove_patterns):
+        if _should_keep(
+            file_path,
+            keep_extensions,
+            keep_filenames,
+            remove_patterns,
+            remove_overrides_keep=remove_overrides_keep,
+        ):
             plan.keep_count += 1
             continue
 
@@ -182,6 +204,8 @@ def plan_cleanup_single(
     keep_extensions: set[str],
     keep_filenames: set[str],
     remove_patterns: list[str],
+    *,
+    remove_overrides_keep: bool = True,
 ) -> tuple[CleanupPlan | None, CleanupSkipReason | None]:
     state, skip = check_cleanup_eligibility(reaction_dir)
     if skip is not None:
@@ -194,6 +218,7 @@ def plan_cleanup_single(
         keep_extensions=keep_extensions,
         keep_filenames=keep_filenames,
         remove_patterns=remove_patterns,
+        remove_overrides_keep=remove_overrides_keep,
     )
     if not plan.files_to_remove:
         return None, CleanupSkipReason(str(reaction_dir), "nothing_to_clean")
@@ -205,6 +230,8 @@ def plan_cleanup_root_scan(
     keep_extensions: set[str],
     keep_filenames: set[str],
     remove_patterns: list[str],
+    *,
+    remove_overrides_keep: bool = True,
 ) -> tuple[list[CleanupPlan], list[CleanupSkipReason]]:
     plans: list[CleanupPlan] = []
     skips: list[CleanupSkipReason] = []
@@ -249,6 +276,7 @@ def plan_cleanup_root_scan(
             keep_extensions=keep_extensions,
             keep_filenames=keep_filenames,
             remove_patterns=remove_patterns,
+            remove_overrides_keep=remove_overrides_keep,
         )
         if plan is not None:
             plans.append(plan)

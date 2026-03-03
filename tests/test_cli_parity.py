@@ -112,6 +112,26 @@ def test_parser_accepts_init_command() -> None:
     assert args.sample == "none"
 
 
+def test_parser_accepts_check_and_monitor_commands() -> None:
+    parser = build_parser()
+    check_args = parser.parse_args(["check", "--root", "/tmp/organized"])
+    monitor_args = parser.parse_args(["monitor", "--threshold-gb", "10"])
+    assert check_args.command == "check"
+    assert check_args.root == "/tmp/organized"
+    assert monitor_args.command == "monitor"
+    assert monitor_args.threshold_gb == 10
+
+
+def test_parser_accepts_run_inp_background_mode_flags() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        ["run-inp", "--reaction-dir", "/tmp/rxn", "--background"],
+    )
+    assert args.command == "run-inp"
+    assert args.background is True
+    assert args.foreground is False
+
+
 def test_parser_rejects_legacy_doctor_and_validate_commands() -> None:
     parser = build_parser()
     with pytest.raises(SystemExit):

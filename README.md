@@ -6,7 +6,7 @@ Local PySCF/ASE retry runner for `.inp`-based reaction directories.
 The command style is intentionally aligned with `orca_auto`.
 
 - CLI entry point: `pyscf_auto`
-- Main commands: `init`, `run-inp`, `status`, `organize`, `cleanup`
+- Main commands: `init`, `run-inp`, `status`, `organize`, `check`, `monitor`, `cleanup`
 - App config: `~/.pyscf_auto/config.yaml` (or `PYSCF_AUTO_CONFIG`)
 - Default roots: `~/pyscf_runs` (input/runs), `~/pyscf_outputs` (organized outputs)
 
@@ -46,13 +46,19 @@ pyscf_auto init --force
 pyscf_auto run-inp --reaction-dir ~/pyscf_runs/demo_water
 ```
 
+Optional: background mode (prints `pid`/`log` and returns immediately):
+
+```bash
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/demo_water --background
+```
+
 ### 4) Check run status
 
 ```bash
 pyscf_auto status --reaction-dir ~/pyscf_runs/demo_water
 ```
 
-### 5) Organize and cleanup (optional)
+### 5) Organize, quality-check, and cleanup (optional)
 
 ```bash
 # organize dry-run
@@ -60,6 +66,12 @@ pyscf_auto organize --root ~/pyscf_runs
 
 # apply organize
 pyscf_auto organize --root ~/pyscf_runs --apply
+
+# quality check organized results
+pyscf_auto check --root ~/pyscf_outputs --json
+
+# disk usage snapshot
+pyscf_auto monitor --json
 
 # cleanup dry-run
 pyscf_auto cleanup --root ~/pyscf_outputs
@@ -69,6 +81,7 @@ pyscf_auto cleanup --root ~/pyscf_outputs --apply
 ```
 
 Default keep/remove policy is configurable under `cleanup` in config.
+`cleanup.remove_overrides_keep` controls whether remove patterns can override keep rules.
 
 ## For orca_auto Users
 
@@ -77,12 +90,14 @@ The primary command mapping is intentionally the same:
 - `run-inp`: run or resume one reaction directory
 - `status`: inspect one reaction directory
 - `organize`: move completed runs to organized storage
+- `check`: run post-run quality checks
+- `monitor`: check/watch disk usage
 - `cleanup`: remove non-essential files from organized runs
 
 Main difference:
 
 - Engine is PySCF/ASE based (not ORCA binary execution).
-- Background wrapper behavior from `orca_auto/bin/orca_auto` is not used here; run directly via `pyscf_auto ...`.
+- `run-inp` background mode is explicit (`--background` / `--foreground`) instead of wrapper-only behavior.
 
 ## Dependency Profiles
 
@@ -113,6 +128,8 @@ Heavy workflow stages can be disabled explicitly:
 ./scripts/preflight_check.sh
 ./scripts/validate_inp.py path/to/input.inp
 ./scripts/validate_runtime_config.py --config ~/.pyscf_auto/config.yaml
+./scripts/progress_report.py --print-only
+./scripts/install_cron.sh
 ```
 
 ## Development Checks

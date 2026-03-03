@@ -60,6 +60,13 @@ def main() -> int:
     print(f"         organized_root: {organized_root}")
     print(f"         default_max_retries: {max_retries}")
     print(f"         monitoring.enabled: {bool(cfg.monitoring.enabled)}")
+    print(
+        "         disk_monitor: "
+        f"threshold_gb={cfg.disk_monitor.threshold_gb}, "
+        f"interval_sec={cfg.disk_monitor.interval_sec}, "
+        f"top_n={cfg.disk_monitor.top_n}"
+    )
+    print(f"         cleanup.remove_overrides_keep: {bool(cfg.cleanup.remove_overrides_keep)}")
 
     if allowed_root.exists() and allowed_root.is_dir():
         print("  [PASS] allowed_root exists and is a directory")
