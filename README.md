@@ -3,14 +3,14 @@
 **Status: Beta**
 
 Local PySCF/ASE retry runner for `.inp`-based reaction directories.
-The user-facing command surface is aligned with `orca_auto`.
+The command style is intentionally aligned with `orca_auto`.
 
 - CLI entry point: `pyscf_auto`
-- Main commands: `run-inp`, `status`, `organize`, `cleanup`
+- Main commands: `init`, `run-inp`, `status`, `organize`, `cleanup`
 - App config: `~/.pyscf_auto/config.yaml` (or `PYSCF_AUTO_CONFIG`)
 - Default roots: `~/pyscf_runs` (input/runs), `~/pyscf_outputs` (organized outputs)
 
-## Quickstart
+## Quickstart (First 5 Minutes)
 
 ### 1) Install
 
@@ -19,7 +19,72 @@ conda create -n pyscf_auto -c daehyupsohn -c conda-forge pyscf_auto
 conda activate pyscf_auto
 ```
 
-### Dependency Profiles
+### 2) One-time initialization
+
+`init` creates runtime directories, a user config, and a runnable sample reaction.
+
+```bash
+pyscf_auto init
+```
+
+Useful options:
+
+```bash
+# custom roots
+pyscf_auto init --allowed-root ~/my_runs --organized-root ~/my_outputs
+
+# create optimization sample instead of single-point sample
+pyscf_auto init --sample water_opt --reaction-name demo_opt
+
+# overwrite existing config/sample files
+pyscf_auto init --force
+```
+
+### 3) Run the sample
+
+```bash
+pyscf_auto run-inp --reaction-dir ~/pyscf_runs/demo_water
+```
+
+### 4) Check run status
+
+```bash
+pyscf_auto status --reaction-dir ~/pyscf_runs/demo_water
+```
+
+### 5) Organize and cleanup (optional)
+
+```bash
+# organize dry-run
+pyscf_auto organize --root ~/pyscf_runs
+
+# apply organize
+pyscf_auto organize --root ~/pyscf_runs --apply
+
+# cleanup dry-run
+pyscf_auto cleanup --root ~/pyscf_outputs
+
+# apply cleanup
+pyscf_auto cleanup --root ~/pyscf_outputs --apply
+```
+
+Default keep/remove policy is configurable under `cleanup` in config.
+
+## For orca_auto Users
+
+The primary command mapping is intentionally the same:
+
+- `run-inp`: run or resume one reaction directory
+- `status`: inspect one reaction directory
+- `organize`: move completed runs to organized storage
+- `cleanup`: remove non-essential files from organized runs
+
+Main difference:
+
+- Engine is PySCF/ASE based (not ORCA binary execution).
+- Background wrapper behavior from `orca_auto/bin/orca_auto` is not used here; run directly via `pyscf_auto ...`.
+
+## Dependency Profiles
 
 - `core` (default): CLI + state/organize/cleanup paths
 - `engine`: adds PySCF/ASE runtime dependencies for `run-inp`
@@ -33,7 +98,7 @@ pip install -e ".[engine]"
 pip install -e ".[full]"
 ```
 
-### Optional Feature Flags
+## Optional Feature Flags
 
 Heavy workflow stages can be disabled explicitly:
 
@@ -41,43 +106,6 @@ Heavy workflow stages can be disabled explicitly:
 - `PYSCF_AUTO_DISABLE_IRC=1`
 - `PYSCF_AUTO_DISABLE_FREQUENCY=1`
 - `PYSCF_AUTO_DISABLE_QCSCHEMA=1`
-
-### 2) Run
-
-```bash
-pyscf_auto run-inp --reaction-dir ~/pyscf_runs/my_reaction
-```
-
-### 3) Check status
-
-```bash
-pyscf_auto status --reaction-dir ~/pyscf_runs/my_reaction
-```
-
-### 4) Organize outputs (optional)
-
-```bash
-# dry-run
-pyscf_auto organize --root ~/pyscf_runs
-
-# apply
-pyscf_auto organize --root ~/pyscf_runs --apply
-```
-
-### 5) Cleanup organized outputs (optional)
-
-```bash
-# dry-run
-pyscf_auto cleanup --root ~/pyscf_outputs
-
-# apply
-pyscf_auto cleanup --root ~/pyscf_outputs --apply
-
-# single organized run
-pyscf_auto cleanup --reaction-dir ~/pyscf_outputs/single_point/H2O/run_001 --apply
-```
-
-Default keep/remove policy is configurable in `cleanup` section of config.
 
 ## Utility Scripts
 

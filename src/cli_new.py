@@ -15,6 +15,44 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Create first-run config/directories and an optional sample reaction folder.",
+    )
+    init_parser.add_argument(
+        "--allowed-root",
+        default=None,
+        help="Override runtime.allowed_root for the generated config.",
+    )
+    init_parser.add_argument(
+        "--organized-root",
+        default=None,
+        help="Override runtime.organized_root for the generated config.",
+    )
+    init_parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        help="Override runtime.default_max_retries for the generated config.",
+    )
+    init_parser.add_argument(
+        "--sample",
+        choices=["water_sp", "water_opt", "none"],
+        default="water_sp",
+        help="Sample reaction template to create under allowed_root.",
+    )
+    init_parser.add_argument(
+        "--reaction-name",
+        default="demo_water",
+        help="Directory name for the sample reaction under allowed_root.",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite config/sample files if they already exist.",
+    )
+    init_parser.add_argument("--json", action="store_true")
+
     run_parser = subparsers.add_parser("run-inp", help="Run a PySCF calculation from a .inp file.")
     run_parser.add_argument(
         "--reaction-dir",
@@ -81,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     command_map = {
+        "init": _cmd_init,
         "run-inp": _cmd_run_inp,
         "status": _cmd_status,
         "organize": _cmd_organize,
@@ -109,6 +148,12 @@ def _cmd_run_inp(args: argparse.Namespace) -> int:
     from commands.run_inp import cmd_run_inp
 
     return int(cmd_run_inp(args))
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    from commands.init import cmd_init
+
+    return int(cmd_init(args))
 
 
 def _cmd_status(args: argparse.Namespace) -> int:

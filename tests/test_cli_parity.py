@@ -105,6 +105,13 @@ def test_parser_accepts_cleanup_command() -> None:
     assert args.root == "/tmp/organized"
 
 
+def test_parser_accepts_init_command() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["init", "--sample", "none"])
+    assert args.command == "init"
+    assert args.sample == "none"
+
+
 def test_parser_rejects_legacy_doctor_and_validate_commands() -> None:
     parser = build_parser()
     with pytest.raises(SystemExit):
